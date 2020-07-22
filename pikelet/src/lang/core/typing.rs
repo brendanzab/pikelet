@@ -162,7 +162,7 @@ pub enum ExpectedType {
 /// Check that a term is a type and return the universe level it inhabits.
 pub fn is_type(state: &mut State<'_>, term: &Term) -> Option<UniverseLevel> {
     let r#type = synth_type(state, term);
-    match r#type.as_ref() {
+    match r#type.force(state.globals) {
         Value::Universe(level) => Some(*level),
         Value::Error => None,
         _ => {
@@ -177,18 +177,19 @@ pub fn is_type(state: &mut State<'_>, term: &Term) -> Option<UniverseLevel> {
 
 /// Check that a term is an element of a type.
 pub fn check_type(state: &mut State<'_>, term: &Term, expected_type: &Arc<Value>) {
-    match (term, expected_type.as_ref()) {
+    match (term, expected_type.force(state.globals)) {
         (_, Value::Error) => {}
-        (Term::Sequence(entry_terms), Value::Elim(Head::Global(name, _), elims)) => {
-            match (name.as_ref(), elims.as_slice()) {
+        (Term::Sequence(entry_terms), Value::Stuck(Head::Global(name, _), spine)) => {
+            match (name.as_ref(), spine.as_slice()) {
                 ("Array", [Elim::Function(len), Elim::Function(entry_type)]) => {
                     for entry_term in entry_terms {
-                        check_type(state, entry_term, entry_type);
+                        check_type(state, entry_term, entry_type.force(state.globals));
                     }
 
-                    match **len {
+                    let len = len.force(state.globals);
+                    match len.as_ref() {
                         Value::Constant(Constant::U32(len))
-                            if len as usize == entry_terms.len() => {}
+                            if *len as usize == entry_terms.len() => {}
                         _ => state.report(Message::MismatchedSequenceLength {
                             found_len: entry_terms.len(),
                             expected_len: len.clone(),
@@ -197,7 +198,7 @@ pub fn check_type(state: &mut State<'_>, term: &Term, expected_type: &Arc<Value>
                 }
                 ("List", [Elim::Function(entry_type)]) => {
                     for entry_term in entry_terms {
-                        check_type(state, entry_term, entry_type);
+                        check_type(state, entry_term, entry_type.force(state.globals));
                     }
                 }
                 _ => state.report(Message::NoSequenceConversion {
@@ -353,7 +354,7 @@ pub fn synth_type(state: &mut State<'_>, term: &Term) -> Arc<Value> {
         Term::RecordElim(head, label) => {
             let head_type = synth_type(state, head);
 
-            match head_type.as_ref() {
+            match head_type.force(state.globals) {
                 Value::RecordType(closure) => {
                     let head_value = state.eval_term(head);
 
@@ -397,7 +398,7 @@ pub fn synth_type(state: &mut State<'_>, term: &Term) -> Arc<Value> {
         }
         Term::FunctionElim(head, argument) => {
             let head_type = synth_type(state, head);
-            match head_type.as_ref() {
+            match head_type.force(state.globals) {
                 Value::FunctionType(_, param_type, body_closure) => {
                     check_type(state, argument, &param_type);
                     let argument_value = state.eval_term(argument);

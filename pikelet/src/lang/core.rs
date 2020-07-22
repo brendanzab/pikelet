@@ -219,6 +219,11 @@ impl LocalSize {
     pub fn index(self, level: LocalLevel) -> LocalIndex {
         LocalIndex(self.0 - (level.0 + 1)) // FIXME: Check for over/underflow?
     }
+
+    /// Convert a variable index to a variable level in the current environment.
+    pub fn level(self, index: LocalIndex) -> LocalLevel {
+        LocalLevel(self.0 - (index.0 + 1)) // FIXME: Check for over/underflow?
+    }
 }
 
 /// A local environment.

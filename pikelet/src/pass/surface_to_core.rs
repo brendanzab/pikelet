@@ -5,7 +5,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::lang::core;
-use crate::lang::core::semantics::{self, Elim, Head, RecordTypeClosure, Value};
+use crate::lang::core::semantics::{self, Elim, Head, RecordTypeClosure, Unfold, Value};
 use crate::lang::surface::{Literal, Term};
 use crate::pass::core_to_surface;
 
@@ -135,7 +135,7 @@ impl<'me> State<'me> {
 
     /// Read back a value into a normal form using the current state of the elaborator.
     pub fn read_back_value(&mut self, value: &Value) -> core::Term {
-        semantics::read_back_value(self.globals, self.values.size(), value)
+        semantics::read_back_value(self.globals, self.values.size(), Unfold::None, value)
     }
 
     /// Check if `value0` is a subtype of `value1`.
@@ -156,7 +156,7 @@ pub fn is_type<S: AsRef<str>>(
     term: &Term<S>,
 ) -> (core::Term, Option<core::UniverseLevel>) {
     let (core_term, r#type) = synth_type(state, term);
-    match r#type.as_ref() {
+    match r#type.force(state.globals) {
         Value::Universe(level) => (core_term, Some(*level)),
         Value::Error => (core::Term::Error, None),
         found_type => {
@@ -178,9 +178,9 @@ pub fn check_type<S: AsRef<str>>(
     term: &Term<S>,
     expected_type: &Arc<Value>,
 ) -> core::Term {
-    match (term, expected_type.as_ref()) {
+    match (term, expected_type.force(state.globals)) {
         (_, Value::Error) => core::Term::Error,
-        (Term::Literal(_, literal), Value::Elim(Head::Global(name, _), spine)) => {
+        (Term::Literal(_, literal), Value::Stuck(Head::Global(name, _), spine)) => {
             use crate::lang::core::Constant::*;
 
             match (literal, name.as_ref(), spine.as_slice()) {
@@ -216,17 +216,24 @@ pub fn check_type<S: AsRef<str>>(
             });
             core::Term::Error
         }
-        (Term::Sequence(_, entry_terms), Value::Elim(Head::Global(name, _), elims)) => {
-            match (name.as_ref(), elims.as_slice()) {
+        (Term::Sequence(_, entry_terms), Value::Stuck(Head::Global(name, _), spine)) => {
+            match (name.as_ref(), spine.as_slice()) {
                 ("Array", [Elim::Function(len), Elim::Function(core_entry_type)]) => {
                     let core_entry_terms = entry_terms
                         .iter()
-                        .map(|entry_term| Arc::new(check_type(state, entry_term, core_entry_type)))
+                        .map(|entry_term| {
+                            Arc::new(check_type(
+                                state,
+                                entry_term,
+                                core_entry_type.force(state.globals),
+                            ))
+                        })
                         .collect();
 
-                    match **len {
+                    let len = len.force(state.globals);
+                    match len.as_ref() {
                         Value::Constant(core::Constant::U32(len))
-                            if len as usize == entry_terms.len() =>
+                            if *len as usize == entry_terms.len() =>
                         {
                             core::Term::Sequence(core_entry_terms)
                         }
@@ -247,7 +254,13 @@ pub fn check_type<S: AsRef<str>>(
                 ("List", [Elim::Function(core_entry_type)]) => {
                     let core_entry_terms = entry_terms
                         .iter()
-                        .map(|entry_term| Arc::new(check_type(state, entry_term, core_entry_type)))
+                        .map(|entry_term| {
+                            Arc::new(check_type(
+                                state,
+                                entry_term,
+                                core_entry_type.force(state.globals),
+                            ))
+                        })
                         .collect();
 
                     core::Term::Sequence(core_entry_terms)
@@ -330,7 +343,7 @@ pub fn check_type<S: AsRef<str>>(
             let mut pending_param_names = param_names.iter();
 
             while let Some((param_range, param_name)) = pending_param_names.next() {
-                match expected_type.as_ref() {
+                match expected_type.force(state.globals) {
                     Value::FunctionType(_, param_type, body_closure) => {
                         let param =
                             state.push_local_param(Some(param_name.as_ref()), param_type.clone());
@@ -503,7 +516,7 @@ pub fn synth_type<S: AsRef<str>>(
         Term::RecordElim(head, label_range, label) => {
             let (core_head, head_type) = synth_type(state, head);
 
-            match head_type.as_ref() {
+            match head_type.force(state.globals) {
                 Value::RecordType(closure) => {
                     let head_value = state.eval_term(&core_head);
                     let label = label.as_ref();
@@ -605,7 +618,7 @@ pub fn synth_type<S: AsRef<str>>(
             let mut arguments = arguments.iter();
 
             while let Some(argument) = arguments.next() {
-                match head_type.as_ref() {
+                match head_type.force(state.globals) {
                     Value::FunctionType(_, param_type, body_closure) => {
                         head_range.end = argument.range().end;
                         let core_argument = check_type(state, argument, &param_type);
