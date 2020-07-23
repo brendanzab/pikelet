@@ -5,14 +5,14 @@
 [pikelet-mascot]: assets/pikelet.png
 
 [![Actions Status][actions-badge]][actions-url]
-[![Gitter][gitter-badge]][gitter-lobby]
+[![Matrix][matrix-badge]][matrix-lobby]
 [![License][license-badge]][license-url]
 [![Contributor Covenant][code-of-conduct-badge]][code-of-conduct-url]
 
 [actions-badge]: https://github.com/pikelet-lang/pikelet/workflows/Continuous%20integration/badge.svg
 [actions-url]: https://github.com/pikelet-lang/pikelet/actions
-[gitter-badge]: https://badges.gitter.im/pikelet-lang/pikelet.svg
-[gitter-lobby]: https://gitter.im/pikelet-lang/Lobby
+[matrix-badge]: https://img.shields.io/matrix/pikelet:matrix.org?label=%23pikelet%3Amatrix.org
+[matrix-lobby]: https://app.element.io/#/room/#pikelet:matrix.org
 [license-badge]: https://img.shields.io/github/license/pikelet-lang/pikelet
 [license-url]: ./LICENSE
 [code-of-conduct-badge]: https://img.shields.io/badge/Contributor%20Covenant-v2.0%20adopted-ff69b4.svg
