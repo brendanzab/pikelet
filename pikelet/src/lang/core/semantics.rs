@@ -545,7 +545,7 @@ fn is_equal(globals: &Globals, local_size: LocalSize, value0: &Value, value1: &V
 
             let value0 = value0.force(globals);
             let value1 = value1.force(globals);
-            is_subtype(globals, local_size, value0, value1)
+            is_equal(globals, local_size, value0, value1)
         }
         (Value::Unstuck(_, _, value0), value1) => {
             is_equal(globals, local_size, value0.force(globals), value1)
