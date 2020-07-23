@@ -7,7 +7,6 @@
 [![Actions Status][actions-badge]][actions-url]
 [![Matrix][matrix-badge]][matrix-lobby]
 [![License][license-badge]][license-url]
-[![Contributor Covenant][code-of-conduct-badge]][code-of-conduct-url]
 
 [actions-badge]: https://github.com/pikelet-lang/pikelet/workflows/Continuous%20integration/badge.svg
 [actions-url]: https://github.com/pikelet-lang/pikelet/actions
