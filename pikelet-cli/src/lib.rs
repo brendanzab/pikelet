@@ -10,6 +10,7 @@ pub enum Options {
     #[structopt(name = "check")]
     Check,
     /// Runs the language server/IDE support (not yet implemented).
+    #[cfg(feature = "ide")]
     #[structopt(name = "ide")]
     Ide,
     /// Runs the REPL/interactive mode.
@@ -25,7 +26,8 @@ pub enum Options {
 pub fn run(options: Options) -> Result<(), Box<dyn Error>> {
     match options {
         Options::Check => Err("not yet implemented".into()),
-        Options::Ide => Err("not yet implemented".into()),
+        #[cfg(feature = "ide")]
+        Options::Ide => pikelet_ide::run(),
         Options::Repl(options) => repl::run(options),
         #[cfg(feature = "gui")]
         Options::Gui => {
