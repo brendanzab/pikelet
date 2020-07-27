@@ -15,7 +15,7 @@ license = "Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-codespan-reporting = "0.9.4"
+codespan-reporting = "0.9.5"
 im = "15"
 itertools = "0.9"
 lalrpop-util = "0.19"
