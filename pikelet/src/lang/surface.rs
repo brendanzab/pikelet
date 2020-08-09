@@ -29,6 +29,7 @@ pub type TermEntry<S> = (Range<usize>, S, Term<S>);
 /// A group of function parameters that are elements of the same type.
 pub type ParameterGroup<S> = (Vec<(Range<usize>, S)>, Term<S>);
 
+/// Terms in the surface language.
 #[derive(Debug, Clone)]
 pub enum Term<S> {
     /// Names.
@@ -43,15 +44,25 @@ pub enum Term<S> {
     RecordType(Range<usize>, Vec<TypeEntry<S>>),
     /// Record terms.
     RecordTerm(Range<usize>, Vec<TermEntry<S>>),
-    /// Record eliminations (field access).
+    /// Record eliminations.
+    ///
+    /// Also known as: record projections, field lookup.
     RecordElim(Box<Term<S>>, Range<usize>, S),
     /// Function types.
+    ///
+    /// Also known as: pi type, dependent product type.
     FunctionType(RangeFrom<usize>, Vec<ParameterGroup<S>>, Box<Term<S>>),
     /// Arrow function types.
+    ///
+    /// Also known as: non-dependent function type.
     FunctionArrowType(Box<Term<S>>, Box<Term<S>>),
-    /// Function terms (lambda abstractions).
+    /// Function terms.
+    ///
+    /// Also known as: lambda abstraction, anonymous function.
     FunctionTerm(RangeFrom<usize>, Vec<(Range<usize>, S)>, Box<Term<S>>),
-    /// Function eliminations (function application).
+    /// Function eliminations.
+    ///
+    /// Also known as: function application.
     FunctionElim(Box<Term<S>>, Vec<Term<S>>),
     /// Lift a term by the given number of universe levels.
     Lift(Range<usize>, Box<Term<S>>, u32),

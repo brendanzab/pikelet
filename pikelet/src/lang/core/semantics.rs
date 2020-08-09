@@ -51,8 +51,12 @@ pub enum Value {
     /// Record terms.
     RecordTerm(BTreeMap<String, Arc<Value>>),
     /// Function types.
+    ///
+    /// Also known as: pi type, dependent product type.
     FunctionType(Option<String>, Arc<Value>, Closure),
-    /// Function terms (lambda abstractions).
+    /// Function terms.
+    ///
+    /// Also known as: lambda abstraction, anonymous function.
     FunctionTerm(String, Closure),
 
     /// Error sentinel.
@@ -96,9 +100,13 @@ pub enum Head {
 /// An eliminator, to be used in the spine of an elimination.
 #[derive(Clone, Debug)]
 pub enum Elim {
-    /// Record eliminators (field access).
+    /// Record eliminators.
+    ///
+    /// Also known as: record projections, field lookup.
     Record(String),
-    /// Function eliminatiors (function application).
+    /// Function eliminators.
+    ///
+    /// Also known as: function application.
     Function(Arc<LazyValue>),
 }
 

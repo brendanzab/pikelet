@@ -83,13 +83,21 @@ pub enum Term {
     RecordType(Arc<[(String, Arc<Term>)]>),
     /// Record terms.
     RecordTerm(BTreeMap<String, Arc<Term>>),
-    /// Record eliminations (field access).
+    /// Record eliminations.
+    ///
+    /// Also known as: record projection, field lookup.
     RecordElim(Arc<Term>, String),
     /// Function types.
+    ///
+    /// Also known as: pi type, dependent product type.
     FunctionType(Option<String>, Arc<Term>, Arc<Term>),
-    /// Function terms (lambda abstractions).
+    /// Function terms.
+    ///
+    /// Also known as: lambda abstraction, anonymous function.
     FunctionTerm(String, Arc<Term>),
-    /// Function eliminations (function application).
+    /// Function eliminations.
+    ///
+    /// Also known as: function application.
     FunctionElim(Arc<Term>, Arc<Term>),
     /// Lift a term by the given number of universe levels.
     Lift(Arc<Term>, UniverseOffset),
@@ -193,15 +201,15 @@ impl Default for Globals {
     }
 }
 
-/// An index into the local environment.
+/// A De Bruijn index into the local environment.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct LocalIndex(pub u32);
 
-/// An level into the local environment.
+/// A De Bruijn level into the local environment.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct LocalLevel(u32);
 
-/// The size of the local environment.
+/// The size of the local environment, used for index-to-level conversions.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct LocalSize(u32);
 
