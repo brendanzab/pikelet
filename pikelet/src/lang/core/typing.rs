@@ -190,13 +190,17 @@ pub fn check_type(state: &mut State<'_>, term: &Term, expected_type: &Arc<Value>
                 });
             }
         }
-        (Term::FunctionTerm(_, body), Value::FunctionType(_, param_type, body_closure)) => {
-            let param = state.push_local_param(param_type.clone());
-            check_type(state, body, &body_closure.elim(state.globals, param));
+        (
+            Term::FunctionTerm(_, output_term),
+            Value::FunctionType(_, input_type, output_closure),
+        ) => {
+            let input_term = state.push_local_param(input_type.clone());
+            let output_type = output_closure.elim(state.globals, input_term);
+            check_type(state, output_term, &output_type);
             state.pop_local();
         }
         (Term::FunctionTerm(_, _), _) => {
-            state.report(Message::TooManyParameters);
+            state.report(Message::TooManyInputsInFunctionTerm);
         }
         (term, _) => match synth_type(state, term) {
             found_type if state.is_subtype(&found_type, expected_type) => {}
@@ -304,12 +308,12 @@ pub fn synth_type(state: &mut State<'_>, term: &Term) -> Arc<Value> {
 
             Arc::new(Value::Universe(max_level))
         }
-        Term::RecordElim(head, label) => {
-            let head_type = synth_type(state, head);
+        Term::RecordElim(head_term, label) => {
+            let head_type = synth_type(state, head_term);
 
             match head_type.force(state.globals) {
                 Value::RecordType(closure) => {
-                    let head_value = state.eval_term(head);
+                    let head_value = state.eval_term(head_term);
 
                     if let Some(entry_type) = state.record_elim_type(&head_value, label, closure) {
                         return entry_type;
@@ -325,20 +329,20 @@ pub fn synth_type(state: &mut State<'_>, term: &Term) -> Arc<Value> {
             });
             Arc::new(Value::Error)
         }
-        Term::FunctionType(_, param_type, body_type) => {
-            let param_level = is_type(state, param_type);
-            let param_type = match param_level {
+        Term::FunctionType(_, input_type, output_type) => {
+            let input_level = is_type(state, input_type);
+            let input_type = match input_level {
                 None => Arc::new(Value::Error),
-                Some(_) => state.eval_term(param_type),
+                Some(_) => state.eval_term(input_type),
             };
 
-            state.push_local_param(param_type);
-            let body_level = is_type(state, body_type);
+            state.push_local_param(input_type);
+            let output_level = is_type(state, output_type);
             state.pop_local();
 
-            match (param_level, body_level) {
-                (Some(param_level), Some(body_level)) => {
-                    Arc::new(Value::Universe(std::cmp::max(param_level, body_level)))
+            match (input_level, output_level) {
+                (Some(input_level), Some(output_level)) => {
+                    Arc::new(Value::Universe(std::cmp::max(input_level, output_level)))
                 }
                 (_, _) => Arc::new(Value::Error),
             }
@@ -349,17 +353,17 @@ pub fn synth_type(state: &mut State<'_>, term: &Term) -> Arc<Value> {
             });
             Arc::new(Value::Error)
         }
-        Term::FunctionElim(head, argument) => {
-            let head_type = synth_type(state, head);
+        Term::FunctionElim(head_term, input_term) => {
+            let head_type = synth_type(state, head_term);
             match head_type.force(state.globals) {
-                Value::FunctionType(_, param_type, body_closure) => {
-                    check_type(state, argument, &param_type);
-                    let argument_value = state.eval_term(argument);
-                    body_closure.elim(state.globals, argument_value)
+                Value::FunctionType(_, input_type, output_closure) => {
+                    check_type(state, input_term, &input_type);
+                    let input_value = state.eval_term(input_term);
+                    output_closure.elim(state.globals, input_value)
                 }
                 Value::Error => Arc::new(Value::Error),
                 _ => {
-                    state.report(Message::TooManyArguments { head_type });
+                    state.report(Message::TooManyInputsInFunctionElim { head_type });
                     Arc::new(Value::Error)
                 }
             }

@@ -20,8 +20,8 @@ pub enum Message {
         expected_label: String,
         head_type: Arc<Value>,
     },
-    TooManyParameters,
-    TooManyArguments {
+    TooManyInputsInFunctionTerm,
+    TooManyInputsInFunctionElim {
         head_type: Arc<Value>,
     },
     MismatchedSequenceLength {

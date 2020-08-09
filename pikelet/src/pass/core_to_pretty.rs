@@ -113,21 +113,21 @@ where
                     .group()
             })))
             .append("}"),
-        Term::RecordElim(head, label) => (alloc.nil())
-            .append(from_term_prec(alloc, head, Prec::Atomic))
+        Term::RecordElim(head_term, label) => (alloc.nil())
+            .append(from_term_prec(alloc, head_term, Prec::Atomic))
             .append(".")
             .append(alloc.text(label)),
-        Term::FunctionType(_, param_type, body_type) => paren(
+        Term::FunctionType(_, input_type, output_type) => paren(
             alloc,
             prec > Prec::Arrow,
             (alloc.nil())
-                .append(from_term_prec(alloc, param_type, Prec::App))
+                .append(from_term_prec(alloc, input_type, Prec::App))
                 .append(alloc.space())
                 .append("->")
                 .append(alloc.space())
-                .append(from_term_prec(alloc, body_type, Prec::Arrow)),
+                .append(from_term_prec(alloc, output_type, Prec::Arrow)),
         ),
-        Term::FunctionTerm(_, body) => paren(
+        Term::FunctionTerm(_, output_term) => paren(
             alloc,
             prec > Prec::Expr,
             (alloc.nil())
@@ -138,14 +138,14 @@ where
                 .append("=>")
                 .group()
                 .append(alloc.space())
-                .append(from_term_prec(alloc, body, Prec::Expr).nest(4)),
+                .append(from_term_prec(alloc, output_term, Prec::Expr).nest(4)),
         ),
-        Term::FunctionElim(head, argument) => paren(
+        Term::FunctionElim(head_term, input_term) => paren(
             alloc,
             prec > Prec::App,
-            from_term_prec(alloc, head, Prec::App).append(
+            from_term_prec(alloc, head_term, Prec::App).append(
                 (alloc.space())
-                    .append(from_term_prec(alloc, argument, Prec::Arrow))
+                    .append(from_term_prec(alloc, input_term, Prec::Arrow))
                     .group()
                     .nest(4),
             ),

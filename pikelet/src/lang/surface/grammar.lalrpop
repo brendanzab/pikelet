@@ -46,27 +46,27 @@ pub Term: Term<&'input str> = {
 
 ExprTerm: Term<&'input str> = {
     ArrowTerm,
-    <start: @L> "fun" <param_names: ParamName+> "=>" <body: ExprTerm> => {
-        Term::FunctionTerm(start.., param_names, Box::new(body))
+    <start: @L> "fun" <input_names: InputName+> "=>" <output_term: ExprTerm> => {
+        Term::FunctionTerm(start.., input_names, Box::new(output_term))
     },
 };
 
 ArrowTerm: Term<&'input str> = {
     AppTerm,
-    <start: @L> "Fun" <param_type_groups: ("(" <ParamName+> ":" <ArrowTerm> ")")+>
-        "->" <body_type: ArrowTerm> =>
+    <start: @L> "Fun" <input_type_groups: ("(" <InputName+> ":" <ArrowTerm> ")")+>
+        "->" <output_type: ArrowTerm> =>
     {
-        Term::FunctionType(start.., param_type_groups, Box::new(body_type))
+        Term::FunctionType(start.., input_type_groups, Box::new(output_type))
     },
-    <param_type: AppTerm> "->" <body_type: ArrowTerm> => {
-        Term::FunctionArrowType(Box::new(param_type), Box::new(body_type))
+    <input_type: AppTerm> "->" <output_type: ArrowTerm> => {
+        Term::FunctionArrowType(Box::new(input_type), Box::new(output_type))
     },
 };
 
 AppTerm: Term<&'input str> = {
     AtomicTerm,
-    <head: AtomicTerm> <arguments: AtomicTerm+> => {
-        Term::FunctionElim(Box::new(head), arguments)
+    <head_term: AtomicTerm> <input_terms: AtomicTerm+> => {
+        Term::FunctionElim(Box::new(head_term), input_terms)
     },
 };
 
@@ -77,7 +77,9 @@ AtomicTerm: Term<&'input str> = {
     <start: @L> "[" <entries: List<Term>> "]" <end: @R> => Term::Sequence(start..end, entries),
     <start: @L> "Record" "{" <entries: List<TypeEntry>> "}" <end: @R> => Term::RecordType(start..end, entries),
     <start: @L> "record" "{" <entries: List<TermEntry>> "}" <end: @R> => Term::RecordTerm(start..end, entries),
-    <head: AtomicTerm> "." <label_start: @L> <label: Name> <end: @R> => Term::RecordElim(Box::new(head), label_start..end, label),
+    <head_term: AtomicTerm> "." <label_start: @L> <label: Name> <end: @R> => {
+        Term::RecordElim(Box::new(head_term), label_start..end, label)
+    },
     <start: @L> <term: AtomicTerm> <shift: "shift"> <end: @R> => {
         Term::Lift(start..end, Box::new(term), shift[1..].parse().unwrap()) // FIXME: Overflow!
     },
@@ -104,7 +106,7 @@ TermEntry: TermEntry<&'input str> = {
     },
 };
 
-ParamName: (Range<usize>,&'input str) = {
+InputName: (Range<usize>,&'input str) = {
     <start: @L> <name: Name> <end: @R> => (start..end, name),
 };
 
