@@ -116,32 +116,32 @@ where
                 })),
             )
             .append("}"),
-        Term::RecordElim(head, _, label) => (alloc.nil())
-            .append(from_term_prec(alloc, head, Prec::Atomic))
+        Term::RecordElim(head_term, _, label) => (alloc.nil())
+            .append(from_term_prec(alloc, head_term, Prec::Atomic))
             .append(".")
             .append(label.as_ref()),
-        Term::FunctionType(_, param_type_groups, body_type) => paren(
+        Term::FunctionType(_, input_type_groups, output_type) => paren(
             alloc,
             prec > Prec::Arrow,
             (alloc.nil())
                 .append("Fun")
                 .append(alloc.space())
                 .append(alloc.intersperse(
-                    param_type_groups.iter().map(|(param_names, param_type)| {
+                    input_type_groups.iter().map(|(input_names, input_type)| {
                         (alloc.nil())
                             .append("(")
                             .append(
                                 alloc.intersperse(
-                                    param_names
+                                    input_names
                                         .iter()
-                                        .map(|(_, param_name)| param_name.as_ref()),
+                                        .map(|(_, input_name)| input_name.as_ref()),
                                     alloc.space(),
                                 ),
                             )
                             .append(alloc.space())
                             .append(":")
                             .append(alloc.space())
-                            .append(from_term_prec(alloc, param_type, Prec::Term))
+                            .append(from_term_prec(alloc, input_type, Prec::Term))
                             .append(")")
                     }),
                     alloc.space(),
@@ -151,23 +151,23 @@ where
                 .group()
                 .append(
                     (alloc.nil()).append(alloc.space()).append(
-                        from_term_prec(alloc, body_type, Prec::Arrow)
+                        from_term_prec(alloc, output_type, Prec::Arrow)
                             .group()
                             .nest(4),
                     ),
                 ),
         ),
-        Term::FunctionArrowType(param_type, body_type) => paren(
+        Term::FunctionArrowType(input_type, output_type) => paren(
             alloc,
             prec > Prec::Arrow,
             (alloc.nil())
-                .append(from_term_prec(alloc, param_type, Prec::App))
+                .append(from_term_prec(alloc, input_type, Prec::App))
                 .append(alloc.space())
                 .append("->")
                 .append(alloc.space())
-                .append(from_term_prec(alloc, body_type, Prec::Arrow)),
+                .append(from_term_prec(alloc, output_type, Prec::Arrow)),
         ),
-        Term::FunctionTerm(_, param_names, body) => paren(
+        Term::FunctionTerm(_, input_names, output_term) => paren(
             alloc,
             prec > Prec::Expr,
             (alloc.nil())
@@ -175,9 +175,9 @@ where
                 .append(alloc.space())
                 .append(
                     alloc.intersperse(
-                        param_names
+                        input_names
                             .iter()
-                            .map(|(_, param_name)| param_name.as_ref()),
+                            .map(|(_, input_name)| input_name.as_ref()),
                         alloc.space(),
                     ),
                 )
@@ -185,20 +185,22 @@ where
                 .append("=>")
                 .group()
                 .append(
-                    (alloc.nil())
-                        .append(alloc.space())
-                        .append(from_term_prec(alloc, body, Prec::Expr).group().nest(4)),
+                    (alloc.nil()).append(alloc.space()).append(
+                        from_term_prec(alloc, output_term, Prec::Expr)
+                            .group()
+                            .nest(4),
+                    ),
                 ),
         ),
-        Term::FunctionElim(head, arguments) => paren(
+        Term::FunctionElim(head_term, input_terms) => paren(
             alloc,
             prec > Prec::App,
-            from_term_prec(alloc, head, Prec::App).append(
+            from_term_prec(alloc, head_term, Prec::App).append(
                 (alloc.nil())
-                    .append(alloc.concat(arguments.iter().map(|argument| {
+                    .append(alloc.concat(input_terms.iter().map(|input_term| {
                         alloc
                             .space()
-                            .append(from_term_prec(alloc, argument, Prec::Arrow))
+                            .append(from_term_prec(alloc, input_term, Prec::Arrow))
                     })))
                     .group()
                     .nest(4),

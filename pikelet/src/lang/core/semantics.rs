@@ -132,9 +132,9 @@ impl Closure {
     }
 
     /// Eliminate a closure.
-    pub fn elim(&self, globals: &Globals, argument: Arc<Value>) -> Arc<Value> {
+    pub fn elim(&self, globals: &Globals, input: Arc<Value>) -> Arc<Value> {
         let mut values = self.values.clone();
-        values.push(argument);
+        values.push(input);
         eval_term(globals, self.universe_offset, &mut values, &self.term)
     }
 }
@@ -232,8 +232,8 @@ impl LazyValue {
             Some(LazyInit::ApplyElim(head, Elim::Record(label))) => {
                 apply_record_elim(head.force(globals), &label)
             }
-            Some(LazyInit::ApplyElim(head, Elim::Function(argument))) => {
-                apply_function_elim(globals, head.force(globals), argument)
+            Some(LazyInit::ApplyElim(head, Elim::Function(input))) => {
+                apply_function_elim(globals, head.force(globals), input)
             }
             None => panic!("Lazy instance has previously been poisoned"),
         })
@@ -312,21 +312,21 @@ pub fn eval_term(
             let head = eval_term(globals, universe_offset, values, head);
             apply_record_elim(&head, label)
         }
-        Term::FunctionType(param_name_hint, param_type, body_type) => {
-            let param_name_hint = param_name_hint.clone();
-            let param_type = eval_term(globals, universe_offset, values, param_type);
-            let body_type = Closure::new(universe_offset, values.clone(), body_type.clone());
-
-            Arc::new(Value::FunctionType(param_name_hint, param_type, body_type))
+        Term::FunctionType(input_name_hint, input_type, output_type) => {
+            Arc::new(Value::FunctionType(
+                input_name_hint.clone(),
+                eval_term(globals, universe_offset, values, input_type),
+                Closure::new(universe_offset, values.clone(), output_type.clone()),
+            ))
         }
-        Term::FunctionTerm(param_name, body) => Arc::new(Value::FunctionTerm(
-            param_name.clone(),
-            Closure::new(universe_offset, values.clone(), body.clone()),
+        Term::FunctionTerm(input_name, output_term) => Arc::new(Value::FunctionTerm(
+            input_name.clone(),
+            Closure::new(universe_offset, values.clone(), output_term.clone()),
         )),
-        Term::FunctionElim(head, argument) => {
+        Term::FunctionElim(head, input) => {
             let head = eval_term(globals, universe_offset, values, head);
-            let argument = LazyValue::eval_term(universe_offset, values.clone(), argument.clone());
-            apply_function_elim(globals, &head, Arc::new(argument))
+            let input = LazyValue::eval_term(universe_offset, values.clone(), input.clone());
+            apply_function_elim(globals, &head, Arc::new(input))
         }
         Term::Lift(term, offset) => {
             let universe_offset = (universe_offset + *offset).unwrap(); // FIXME: Handle overflow
@@ -379,26 +379,22 @@ fn apply_record_elim(head_value: &Value, label: &str) -> Arc<Value> {
 }
 
 /// Apply a function term elimination.
-fn apply_function_elim(
-    globals: &Globals,
-    head_value: &Value,
-    argument: Arc<LazyValue>,
-) -> Arc<Value> {
+fn apply_function_elim(globals: &Globals, head_value: &Value, input: Arc<LazyValue>) -> Arc<Value> {
     match head_value {
         Value::Stuck(head, spine) => {
             let mut spine = spine.clone(); // FIXME: Avoid clone of spine?
-            spine.push(Elim::Function(argument));
+            spine.push(Elim::Function(input));
             Arc::new(Value::Stuck(head.clone(), spine))
         }
         Value::Unstuck(head, spine, value) => {
             let mut spine = spine.clone(); // FIXME: Avoid clone of spine?
-            spine.push(Elim::Function(argument.clone()));
-            let value = LazyValue::apply_elim(value.clone(), Elim::Function(argument));
+            spine.push(Elim::Function(input.clone()));
+            let value = LazyValue::apply_elim(value.clone(), Elim::Function(input));
             Arc::new(Value::Unstuck(head.clone(), spine, Arc::new(value)))
         }
 
-        Value::FunctionTerm(_, body_closure) => {
-            body_closure.elim(globals, argument.force(globals).clone())
+        Value::FunctionTerm(_, output_closure) => {
+            output_closure.elim(globals, input.force(globals).clone())
         }
 
         _ => Arc::new(Value::Error),
@@ -430,9 +426,9 @@ fn read_back_spine(
 
     spine.iter().fold(head, |head, elim| match elim {
         Elim::Record(label) => Term::RecordElim(Arc::new(head), label.clone()),
-        Elim::Function(argument) => {
-            let argument = read_back_value(globals, local_size, unfold, argument.force(globals));
-            Term::FunctionElim(Arc::new(head), Arc::new(argument))
+        Elim::Function(input) => {
+            let input = read_back_value(globals, local_size, unfold, input.force(globals));
+            Term::FunctionElim(Arc::new(head), Arc::new(input))
         }
     })
 }
@@ -490,20 +486,22 @@ pub fn read_back_value(
 
             Term::RecordTerm(term_entries)
         }
-        Value::FunctionType(param_name_hint, param_type, body_closure) => {
+        Value::FunctionType(input_name_hint, input_type, output_closure) => {
             let local = Arc::new(Value::local(local_size.next_level()));
-            let param_type = Arc::new(read_back_value(globals, local_size, unfold, param_type));
-            let body_type = body_closure.elim(globals, local);
-            let body_type = read_back_value(globals, local_size.increment(), unfold, &body_type);
+            let input_type = Arc::new(read_back_value(globals, local_size, unfold, input_type));
+            let output_type = output_closure.elim(globals, local);
+            let output_type =
+                read_back_value(globals, local_size.increment(), unfold, &output_type);
 
-            Term::FunctionType(param_name_hint.clone(), param_type, Arc::new(body_type))
+            Term::FunctionType(input_name_hint.clone(), input_type, Arc::new(output_type))
         }
-        Value::FunctionTerm(param_name_hint, body_closure) => {
+        Value::FunctionTerm(input_name_hint, output_closure) => {
             let local = Arc::new(Value::local(local_size.next_level()));
-            let body = body_closure.elim(globals, local);
-            let body = read_back_value(globals, local_size.increment(), unfold, &body);
+            let output_term = output_closure.elim(globals, local);
+            let output_term =
+                read_back_value(globals, local_size.increment(), unfold, &output_term);
 
-            Term::FunctionTerm(param_name_hint.clone(), Arc::new(body))
+            Term::FunctionTerm(input_name_hint.clone(), Arc::new(output_term))
         }
 
         Value::Error => Term::Error,
@@ -523,11 +521,11 @@ pub fn is_equal_spine(
 
     for (elim0, elim1) in Iterator::zip(spine0.iter(), spine1.iter()) {
         match (elim0, elim1) {
-            (Elim::Function(argument0), Elim::Function(argument1)) => {
-                let argument0 = argument0.force(globals);
-                let argument1 = argument1.force(globals);
+            (Elim::Function(input0), Elim::Function(input1)) => {
+                let input0 = input0.force(globals);
+                let input1 = input1.force(globals);
 
-                if !is_equal(globals, local_size, argument0, argument1) {
+                if !is_equal(globals, local_size, input0, input1) {
                     return false;
                 }
             }
@@ -620,25 +618,29 @@ fn is_equal(globals: &Globals, local_size: LocalSize, value0: &Value, value1: &V
             )
         }
         (
-            Value::FunctionType(_, param_type0, body_closure0),
-            Value::FunctionType(_, param_type1, body_closure1),
+            Value::FunctionType(_, input_type0, output_closure0),
+            Value::FunctionType(_, input_type1, output_closure1),
         ) => {
-            if !is_equal(globals, local_size, param_type1, param_type0) {
+            if !is_equal(globals, local_size, input_type1, input_type0) {
                 return false;
             }
 
             let local = Arc::new(Value::local(local_size.next_level()));
-            let body_term0 = body_closure0.elim(globals, local.clone());
-            let body_term1 = body_closure1.elim(globals, local);
-
-            is_equal(globals, local_size.increment(), &body_term0, &body_term1)
+            is_equal(
+                globals,
+                local_size.increment(),
+                &output_closure0.elim(globals, local.clone()),
+                &output_closure1.elim(globals, local),
+            )
         }
-        (Value::FunctionTerm(_, body_closure0), Value::FunctionTerm(_, body_closure1)) => {
+        (Value::FunctionTerm(_, output_closure0), Value::FunctionTerm(_, output_closure1)) => {
             let local = Arc::new(Value::local(local_size.next_level()));
-            let body_value0 = body_closure0.elim(globals, local.clone());
-            let body_value1 = body_closure1.elim(globals, local);
-
-            is_equal(globals, local_size.increment(), &body_value0, &body_value1)
+            is_equal(
+                globals,
+                local_size.increment(),
+                &output_closure0.elim(globals, local.clone()),
+                &output_closure1.elim(globals, local),
+            )
         }
 
         // Errors are always treated as subtypes, regardless of what they are compared with.
@@ -711,18 +713,23 @@ pub fn is_subtype(
             true
         }
         (
-            Value::FunctionType(_, param_type0, body_closure0),
-            Value::FunctionType(_, param_type1, body_closure1),
+            Value::FunctionType(_, input_type0, output_closure0),
+            Value::FunctionType(_, input_type1, output_closure1),
         ) => {
-            if !is_subtype(globals, local_size, param_type1, param_type0) {
+            if !is_subtype(globals, local_size, input_type1, input_type0) {
                 return false;
             }
 
             let local = Arc::new(Value::local(local_size.next_level()));
-            let body_term0 = body_closure0.elim(globals, local.clone());
-            let body_term1 = body_closure1.elim(globals, local);
+            let output_term0 = output_closure0.elim(globals, local.clone());
+            let output_term1 = output_closure1.elim(globals, local);
 
-            is_subtype(globals, local_size.increment(), &body_term0, &body_term1)
+            is_subtype(
+                globals,
+                local_size.increment(),
+                &output_term0,
+                &output_term1,
+            )
         }
 
         // Errors are always treated as subtypes, regardless of what they are compared with.

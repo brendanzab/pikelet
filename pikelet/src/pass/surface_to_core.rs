@@ -337,41 +337,47 @@ pub fn check_type<S: AsRef<str>>(
 
             core::Term::RecordTerm(core_term_entries)
         }
-        (Term::FunctionTerm(_, param_names, body), _) => {
-            let mut seen_param_count = 0;
+        (Term::FunctionTerm(_, input_names, output_term), _) => {
+            let mut seen_input_count = 0;
             let mut expected_type = expected_type.clone();
-            let mut pending_param_names = param_names.iter();
+            let mut pending_input_names = input_names.iter();
 
-            while let Some((param_range, param_name)) = pending_param_names.next() {
+            while let Some((input_range, input_name)) = pending_input_names.next() {
                 match expected_type.force(state.globals) {
-                    Value::FunctionType(_, param_type, body_closure) => {
-                        let param =
-                            state.push_local_param(Some(param_name.as_ref()), param_type.clone());
-                        seen_param_count += 1;
-                        expected_type = body_closure.elim(state.globals, param);
+                    Value::FunctionType(_, input_type, output_closure) => {
+                        let input_value =
+                            state.push_local_param(Some(input_name.as_ref()), input_type.clone());
+                        seen_input_count += 1;
+                        expected_type = output_closure.elim(state.globals, input_value);
                     }
                     Value::Error => {
-                        state.pop_many_locals(seen_param_count);
+                        state.pop_many_locals(seen_input_count);
                         return core::Term::Error;
                     }
                     _ => {
-                        state.report(Message::TooManyParameters {
-                            unexpected_parameters: std::iter::once(param_range.clone())
-                                .chain(pending_param_names.map(|(range, _)| range.clone()))
+                        state.report(Message::TooManyInputsInFunctionTerm {
+                            unexpected_inputs: std::iter::once(input_range.clone())
+                                .chain(pending_input_names.map(|(range, _)| range.clone()))
                                 .collect(),
                         });
-                        check_type(state, body, &expected_type);
-                        state.pop_many_locals(seen_param_count);
+                        check_type(state, output_term, &expected_type);
+                        state.pop_many_locals(seen_input_count);
                         return core::Term::Error;
                     }
                 }
             }
 
-            let core_body = check_type(state, body, &expected_type);
-            state.pop_many_locals(seen_param_count);
-            (param_names.iter().rev()).fold(core_body, |core_body, (_, param_name)| {
-                core::Term::FunctionTerm(param_name.as_ref().to_owned(), Arc::new(core_body))
-            })
+            let core_output_term = check_type(state, output_term, &expected_type);
+            state.pop_many_locals(seen_input_count);
+            (input_names.iter().rev()).fold(
+                core_output_term,
+                |core_output_term, (_, input_name)| {
+                    core::Term::FunctionTerm(
+                        input_name.as_ref().to_owned(),
+                        Arc::new(core_output_term),
+                    )
+                },
+            )
         }
         (term, _) => match synth_type(state, term) {
             (term, found_type) if state.is_subtype(&found_type, expected_type) => term,
@@ -513,17 +519,17 @@ pub fn synth_type<S: AsRef<str>>(
                 Arc::new(Value::Universe(max_level)),
             )
         }
-        Term::RecordElim(head, label_range, label) => {
-            let (core_head, head_type) = synth_type(state, head);
+        Term::RecordElim(head_term, label_range, label) => {
+            let (core_head_term, head_type) = synth_type(state, head_term);
 
             match head_type.force(state.globals) {
                 Value::RecordType(closure) => {
-                    let head_value = state.eval_term(&core_head);
+                    let head_value = state.eval_term(&core_head_term);
                     let label = label.as_ref();
 
                     if let Some(entry_type) = state.record_elim_type(&head_value, label, closure) {
-                        let core_head = Arc::new(core_head);
-                        let core_term = core::Term::RecordElim(core_head, label.to_owned());
+                        let core_head_term = Arc::new(core_head_term);
+                        let core_term = core::Term::RecordElim(core_head_term, label.to_owned());
                         return (core_term, entry_type);
                     }
                 }
@@ -534,47 +540,47 @@ pub fn synth_type<S: AsRef<str>>(
             let head_type = state.read_back_value(&head_type);
             let head_type = state.core_to_surface_term(&head_type);
             state.report(Message::LabelNotFound {
-                head_range: head.range(),
+                head_range: head_term.range(),
                 label_range: label_range.clone(),
                 expected_label: label.as_ref().to_owned(),
                 head_type,
             });
             (core::Term::Error, Arc::new(Value::Error))
         }
-        Term::FunctionType(_, param_type_groups, body_type) => {
+        Term::FunctionType(_, input_type_groups, output_type) => {
             let mut max_level = Some(core::UniverseLevel(0));
             let update_level = |max_level, next_level| match (max_level, next_level) {
                 (Some(max_level), Some(pl)) => Some(std::cmp::max(max_level, pl)),
                 (None, _) | (_, None) => None,
             };
-            let mut core_params = Vec::new();
+            let mut core_inputs = Vec::new();
 
-            for (param_names, param_type) in param_type_groups {
-                for (_, param_name) in param_names {
-                    let (core_param_type, param_level) = is_type(state, param_type);
-                    max_level = update_level(max_level, param_level);
+            for (input_names, input_type) in input_type_groups {
+                for (_, input_name) in input_names {
+                    let (core_input_type, input_level) = is_type(state, input_type);
+                    max_level = update_level(max_level, input_level);
 
-                    let core_param_type_value = state.eval_term(&core_param_type);
-                    state.push_local_param(Some(param_name.as_ref()), core_param_type_value);
-                    core_params.push((Some(param_name.as_ref().to_owned()), core_param_type));
+                    let core_input_type_value = state.eval_term(&core_input_type);
+                    state.push_local_param(Some(input_name.as_ref()), core_input_type_value);
+                    core_inputs.push((Some(input_name.as_ref().to_owned()), core_input_type));
                 }
             }
 
-            let (core_body_type, body_level) = is_type(state, body_type);
-            max_level = update_level(max_level, body_level);
+            let (core_output_type, output_level) = is_type(state, output_type);
+            max_level = update_level(max_level, output_level);
 
-            state.pop_many_locals(core_params.len());
+            state.pop_many_locals(core_inputs.len());
 
             match max_level {
                 None => (core::Term::Error, Arc::new(Value::Error)),
                 Some(max_level) => (
-                    core_params.into_iter().rev().fold(
-                        core_body_type,
-                        |body_type, (param_name, param_type)| {
+                    core_inputs.into_iter().rev().fold(
+                        core_output_type,
+                        |output_type, (input_name, input_type)| {
                             core::Term::FunctionType(
-                                param_name,
-                                Arc::new(param_type),
-                                Arc::new(body_type),
+                                input_name,
+                                Arc::new(input_type),
+                                Arc::new(output_type),
                             )
                         },
                     ),
@@ -582,25 +588,25 @@ pub fn synth_type<S: AsRef<str>>(
                 ),
             }
         }
-        Term::FunctionArrowType(param_type, body_type) => {
-            let (core_param_type, param_level) = is_type(state, param_type);
-            let core_param_type_value = match param_level {
+        Term::FunctionArrowType(input_type, output_type) => {
+            let (core_input_type, input_level) = is_type(state, input_type);
+            let core_input_type_value = match input_level {
                 None => Arc::new(Value::Error),
-                Some(_) => state.eval_term(&core_param_type),
+                Some(_) => state.eval_term(&core_input_type),
             };
 
-            state.push_local_param(None, core_param_type_value);
-            let (core_body_type, body_level) = is_type(state, body_type);
+            state.push_local_param(None, core_input_type_value);
+            let (core_output_type, output_level) = is_type(state, output_type);
             state.pop_local();
 
-            match (param_level, body_level) {
-                (Some(param_level), Some(body_level)) => (
+            match (input_level, output_level) {
+                (Some(input_level), Some(output_level)) => (
                     core::Term::FunctionType(
                         None,
-                        Arc::new(core_param_type),
-                        Arc::new(core_body_type),
+                        Arc::new(core_input_type),
+                        Arc::new(core_output_type),
                     ),
-                    Arc::new(Value::Universe(std::cmp::max(param_level, body_level))),
+                    Arc::new(Value::Universe(std::cmp::max(input_level, output_level))),
                 ),
                 (_, _) => (core::Term::Error, Arc::new(Value::Error)),
             }
@@ -612,37 +618,39 @@ pub fn synth_type<S: AsRef<str>>(
             });
             (core::Term::Error, Arc::new(Value::Error))
         }
-        Term::FunctionElim(head, arguments) => {
-            let mut head_range = head.range();
-            let (mut core_head, mut head_type) = synth_type(state, head);
-            let mut arguments = arguments.iter();
+        Term::FunctionElim(head_term, input_terms) => {
+            let mut head_range = head_term.range();
+            let (mut core_head_term, mut head_type) = synth_type(state, head_term);
+            let mut input_terms = input_terms.iter();
 
-            while let Some(argument) = arguments.next() {
+            while let Some(input) = input_terms.next() {
                 match head_type.force(state.globals) {
-                    Value::FunctionType(_, param_type, body_closure) => {
-                        head_range.end = argument.range().end;
-                        let core_argument = check_type(state, argument, &param_type);
-                        let core_argument_value = state.eval_term(&core_argument);
-                        core_head =
-                            core::Term::FunctionElim(Arc::new(core_head), Arc::new(core_argument));
-                        head_type = body_closure.elim(state.globals, core_argument_value);
+                    Value::FunctionType(_, input_type, output_closure) => {
+                        head_range.end = input.range().end;
+                        let core_input = check_type(state, input, &input_type);
+                        let core_input_value = state.eval_term(&core_input);
+                        core_head_term = core::Term::FunctionElim(
+                            Arc::new(core_head_term),
+                            Arc::new(core_input),
+                        );
+                        head_type = output_closure.elim(state.globals, core_input_value);
                     }
                     Value::Error => return (core::Term::Error, Arc::new(Value::Error)),
                     _ => {
                         let head_type = state.read_back_value(&head_type);
                         let head_type = state.core_to_surface_term(&head_type);
-                        let unexpected_arguments = arguments.map(|arg| arg.range()).collect();
-                        state.report(Message::TooManyArguments {
+                        let unexpected_input_terms = input_terms.map(|arg| arg.range()).collect();
+                        state.report(Message::TooManyInputsInFunctionElim {
                             head_range,
                             head_type,
-                            unexpected_arguments,
+                            unexpected_input_terms,
                         });
                         return (core::Term::Error, Arc::new(Value::Error));
                     }
                 }
             }
 
-            (core_head, head_type)
+            (core_head_term, head_type)
         }
         Term::Lift(_, inner_term, offset) => {
             match state.universe_offset + core::UniverseOffset(*offset) {

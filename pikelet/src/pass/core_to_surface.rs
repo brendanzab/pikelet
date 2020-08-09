@@ -162,50 +162,52 @@ pub fn from_term(state: &mut State<'_>, term: &Term) -> surface::Term<String> {
 
             surface::Term::RecordTerm(0..0, core_term_entries)
         }
-        Term::RecordElim(head, label) => {
-            surface::Term::RecordElim(Box::new(from_term(state, head)), 0..0, label.clone())
+        Term::RecordElim(head_term, label) => {
+            surface::Term::RecordElim(Box::new(from_term(state, head_term)), 0..0, label.clone())
         }
-        Term::FunctionType(param_name_hint, param_type, body_type) => {
-            // FIXME: properly group parameters!
-            let param_type = from_term(state, param_type);
-            let fresh_name = state.push_name(param_name_hint.as_ref().map(String::as_ref));
-            let param_type_groups = vec![(vec![(0..0, fresh_name)], param_type)];
+        Term::FunctionType(input_name_hint, input_type, output_type) => {
+            // FIXME: properly group inputs!
+            let input_type = from_term(state, input_type);
+            let fresh_input_name = state.push_name(input_name_hint.as_ref().map(String::as_ref));
+            let input_type_groups = vec![(vec![(0..0, fresh_input_name)], input_type)];
 
             surface::Term::FunctionType(
                 0..,
-                param_type_groups,
-                Box::new(from_term(state, body_type)),
+                input_type_groups,
+                Box::new(from_term(state, output_type)),
             )
         }
-        Term::FunctionTerm(param_name_hint, body) => {
-            let mut current_body = body;
+        Term::FunctionTerm(input_name_hint, output_term) => {
+            let mut current_output_term = output_term;
 
-            let fresh_param_name = state.push_name(Some(param_name_hint));
-            let mut param_names = vec![(0..0, fresh_param_name)];
+            let fresh_input_name = state.push_name(Some(input_name_hint));
+            let mut input_names = vec![(0..0, fresh_input_name)];
 
-            while let Term::FunctionTerm(param_name_hint, body) = current_body.as_ref() {
-                let fresh_param_name = state.push_name(Some(param_name_hint));
-                param_names.push((0..0, fresh_param_name));
-                current_body = body;
+            while let Term::FunctionTerm(input_name_hint, output_term) =
+                current_output_term.as_ref()
+            {
+                let fresh_input_name = state.push_name(Some(input_name_hint));
+                input_names.push((0..0, fresh_input_name));
+                current_output_term = output_term;
             }
 
-            let body = from_term(state, current_body);
-            state.pop_many_names(param_names.len());
+            let output_term = from_term(state, current_output_term);
+            state.pop_many_names(input_names.len());
 
-            surface::Term::FunctionTerm(0.., param_names, Box::new(body))
+            surface::Term::FunctionTerm(0.., input_names, Box::new(output_term))
         }
-        Term::FunctionElim(head, argument) => {
-            let mut current_head = head;
+        Term::FunctionElim(head_term, input_term) => {
+            let mut current_head_term = head_term;
 
-            let mut arguments = vec![from_term(state, argument)];
-            while let Term::FunctionElim(head, argument) = current_head.as_ref() {
-                arguments.push(from_term(state, argument));
-                current_head = head;
+            let mut input_terms = vec![from_term(state, input_term)];
+            while let Term::FunctionElim(head_term, input_term) = current_head_term.as_ref() {
+                input_terms.push(from_term(state, input_term));
+                current_head_term = head_term;
             }
-            arguments.reverse();
+            input_terms.reverse();
 
-            let head = from_term(state, current_head);
-            surface::Term::FunctionElim(Box::new(head), arguments)
+            let head_term = from_term(state, current_head_term);
+            surface::Term::FunctionElim(Box::new(head_term), input_terms)
         }
         Term::Lift(term, UniverseOffset(offset)) => {
             surface::Term::Lift(0..0, Box::new(from_term(state, term)), *offset)

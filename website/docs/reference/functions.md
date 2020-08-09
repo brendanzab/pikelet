@@ -13,7 +13,7 @@ A function is a way of relating an input to an output.
 
 Function types are written as `A -> B`.
 Functions are [_curried_][currying-wikipedia], meaning that they take a single input, and return a single output.
-Multi-argument functions can be created by creating functions that output other functions.
+Multi-input functions can be created by creating functions that output other functions.
 
 For example, the function type for adding two 32-bit signed integers together is:
 
@@ -52,12 +52,12 @@ U32 -> Type^2 : Type^3
 
 ## Terms
 
-Functions are constructed by specifying a list of one-or-more parameter names after a `fun` token,
-and then a body term after a `=>` token.
-The parameters can then be referred to in the body of the function.
+Functions are constructed by specifying a list of one-or-more input names after a `fun` token,
+and then a output term after a `=>` token.
+The inputs can then be referred to in the output term of the function.
 
 ```pikelet
-fun param-1 param-2 => body
+fun input-1 input-2 => output
 ```
 
 Note that functions must always be constructed in a position where they can find a type annotation.

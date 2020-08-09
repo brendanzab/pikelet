@@ -49,13 +49,13 @@ pub enum Message {
         expected_label: String,
         head_type: Term<String>,
     },
-    TooManyParameters {
-        unexpected_parameters: Vec<Range<usize>>,
+    TooManyInputsInFunctionTerm {
+        unexpected_inputs: Vec<Range<usize>>,
     },
-    TooManyArguments {
+    TooManyInputsInFunctionElim {
         head_range: Range<usize>,
         head_type: Term<String>,
-        unexpected_arguments: Vec<Range<usize>>,
+        unexpected_input_terms: Vec<Range<usize>>,
     },
     InvalidLiteral {
         range: Range<usize>,
@@ -195,35 +195,32 @@ impl Message {
                     )),
                 ]),
 
-            Message::TooManyParameters {
-                unexpected_parameters,
-            } => Diagnostic::error()
-                .with_message("too many parameters given for function term")
+            Message::TooManyInputsInFunctionTerm { unexpected_inputs } => Diagnostic::error()
+                .with_message("too many inputs given for function term")
                 .with_labels(
-                    unexpected_parameters
+                    unexpected_inputs
                         .iter()
-                        .map(|parameter_range| {
-                            Label::primary((), parameter_range.clone())
-                                .with_message("unexpected parameter")
+                        .map(|input_range| {
+                            Label::primary((), input_range.clone()).with_message("unexpected input")
                         })
                         .collect(),
                 ),
 
-            Message::TooManyArguments {
+            Message::TooManyInputsInFunctionElim {
                 head_range,
                 head_type,
-                unexpected_arguments,
+                unexpected_input_terms,
             } => Diagnostic::error()
-                .with_message("term was applied to too many arguments")
+                .with_message("term was applied to too many inputs")
                 .with_labels(
                     std::iter::once(Label::primary((), head_range.clone()).with_message(format!(
                         // TODO: multi-line?
                         "expected a function, found `{}`",
                         to_doc(&head_type).pretty(std::usize::MAX),
                     )))
-                    .chain(unexpected_arguments.iter().map(|argument_range| {
-                        Label::primary((), argument_range.clone())
-                            .with_message("unexpected argument".to_owned())
+                    .chain(unexpected_input_terms.iter().map(|input_range| {
+                        Label::primary((), input_range.clone())
+                            .with_message("unexpected input".to_owned())
                     }))
                     .collect(),
                 ),

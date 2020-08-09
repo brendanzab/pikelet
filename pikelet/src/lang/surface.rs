@@ -26,8 +26,8 @@ pub enum Literal<S> {
 pub type TypeEntry<S> = (Range<usize>, S, Option<S>, Term<S>);
 /// Entry in a [record term](Term::RecordTerm).
 pub type TermEntry<S> = (Range<usize>, S, Term<S>);
-/// A group of function parameters that are elements of the same type.
-pub type ParameterGroup<S> = (Vec<(Range<usize>, S)>, Term<S>);
+/// A group of function inputs that are elements of the same type.
+pub type InputGroup<S> = (Vec<(Range<usize>, S)>, Term<S>);
 
 /// Terms in the surface language.
 #[derive(Debug, Clone)]
@@ -51,7 +51,7 @@ pub enum Term<S> {
     /// Function types.
     ///
     /// Also known as: pi type, dependent product type.
-    FunctionType(RangeFrom<usize>, Vec<ParameterGroup<S>>, Box<Term<S>>),
+    FunctionType(RangeFrom<usize>, Vec<InputGroup<S>>, Box<Term<S>>),
     /// Arrow function types.
     ///
     /// Also known as: non-dependent function type.
@@ -94,14 +94,14 @@ impl<T> Term<T> {
             | Term::Error(range) => range.clone(),
             Term::Ann(term, r#type) => term.range().start..r#type.range().end,
             Term::RecordElim(term, label_range, _) => term.range().start..label_range.end,
-            Term::FunctionType(range, _, body_type) => range.start..body_type.range().end,
-            Term::FunctionArrowType(param_type, body_type) => {
-                param_type.range().start..body_type.range().end
+            Term::FunctionType(range, _, output_type) => range.start..output_type.range().end,
+            Term::FunctionArrowType(input_type, output_type) => {
+                input_type.range().start..output_type.range().end
             }
-            Term::FunctionTerm(range, _, body) => range.start..body.range().end,
-            Term::FunctionElim(head, arguments) => match arguments.last() {
-                Some(argument) => head.range().start..argument.range().end,
-                None => head.range(),
+            Term::FunctionTerm(range, _, output_term) => range.start..output_term.range().end,
+            Term::FunctionElim(head_term, input_terms) => match input_terms.last() {
+                Some(input_term) => head_term.range().start..input_term.range().end,
+                None => head_term.range(),
             },
         }
     }

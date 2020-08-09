@@ -32,10 +32,10 @@ record {
             (a-b-c : Fun (a : A) (b : B a) -> C a b)
             -> (Fun (a : A) -> C a (a-b a)),
 
-    ||| Flip the order of the first two arguments to a function
+    ||| Flip the order of the first two inputs to a function
     flip : Fun (A B C : Type) -> (A -> B -> C) -> (B -> A -> C),
 
-    ||| Flip the order of the first two arguments to a dependent function.
+    ||| Flip the order of the first two inputs to a dependent function.
     dep-flip :
         Fun (A B : Type)
             (C : A -> B -> Type)
@@ -47,9 +47,8 @@ record {
 
     ||| Dependent substitution.
     |||
-    ||| Takes three arguments and then returns the first argument applied to the
-    ||| third, which is then applied to the result of the second argument applied to
-    ||| the third.
+    ||| Takes three inputs and then returns the first input applied to the third,
+    ||| which is then applied to the result of the second input applied to the third.
     |||
     ||| Also known as the 'S Combinator' in the [SKI combinator calculus][ski-wiki].
     |||
