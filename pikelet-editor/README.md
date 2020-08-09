@@ -1,4 +1,4 @@
-# pikelet-gui
+# pikelet-editor
 
 This is intended to provided the basis for a structured programming environment for Pikelet.
 While the hopes behind this are ambitious, we will need to proceed carefully, taking care to avoid getting trapped down rabbit holes.

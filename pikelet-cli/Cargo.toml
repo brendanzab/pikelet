@@ -15,15 +15,15 @@ license = "Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["gui", "ide"]
-gui = ["pikelet-gui"]
-ide = ["pikelet-ide"]
+default = ["editor", "language-server"]
+editor = ["pikelet-editor"]
+language-server = ["pikelet-language-server"]
 
 [dependencies]
 codespan-reporting = "0.9.5"
 pikelet = { path = "../pikelet" }
-pikelet-gui = { path = "../pikelet-gui", optional = true }
-pikelet-ide = { path = "../pikelet-ide", optional = true }
+pikelet-editor = { path = "../pikelet-editor", optional = true }
+pikelet-language-server = { path = "../pikelet-language-server", optional = true }
 pretty = "0.10"
 rustyline = "6.2"
 structopt = "0.3"

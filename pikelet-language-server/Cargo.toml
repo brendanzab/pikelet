@@ -1,5 +1,5 @@
 [package]
-name = "pikelet-ide"
+name = "pikelet-language-server"
 version = "0.1.0"
 authors = ["Brendan Zabarauskas <bjzaba@yahoo.com.au>"]
 edition = "2018"

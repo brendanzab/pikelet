@@ -2,6 +2,6 @@
 members = [
     "./pikelet",
     "./pikelet-cli",
-    "./pikelet-gui",
-    "./pikelet-ide",
+    "./pikelet-editor",
+    "./pikelet-language-server",
 ]

@@ -1,5 +1,5 @@
 [package]
-name = "pikelet-gui"
+name = "pikelet-editor"
 version = "0.1.0"
 authors = ["Brendan Zabarauskas <bjzaba@yahoo.com.au>"]
 edition = "2018"
