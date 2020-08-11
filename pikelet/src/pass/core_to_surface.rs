@@ -193,13 +193,13 @@ pub fn from_term(state: &mut State<'_>, term: &Term) -> surface::Term<String> {
                 Box::new(from_term(state, output_type)),
             )
         }
-        Term::FunctionTerm(input_name_hint, output_term) => {
+        Term::FunctionTerm(input_name_hint, input_type, output_term) => {
             let mut current_output_term = output_term;
 
             let fresh_input_name = state.push_name(Some(input_name_hint));
             let mut input_names = vec![(0..0, fresh_input_name)];
 
-            while let Term::FunctionTerm(input_name_hint, output_term) =
+            while let Term::FunctionTerm(input_name_hint, input_type, output_term) =
                 current_output_term.as_ref()
             {
                 let fresh_input_name = state.push_name(Some(input_name_hint));

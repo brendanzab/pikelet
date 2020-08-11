@@ -9,7 +9,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use crate::lang::core::semantics::{self, Elim, Head, RecordTypeClosure, Value};
+use crate::lang::core::semantics::{self, Closure, Elim, Head, RecordTypeClosure, Unfold, Value};
 use crate::lang::core::{
     Constant, Globals, LocalLevel, Locals, Term, UniverseLevel, UniverseOffset,
 };
@@ -97,6 +97,11 @@ impl<'me> State<'me> {
         semantics::eval_term(self.globals, self.universe_offset, &mut self.values, term)
     }
 
+    /// Read back a value into a normal form using the current state of the type checker.
+    pub fn read_back_value(&mut self, value: &Value) -> Term {
+        semantics::read_back_value(self.globals, self.values.size(), Unfold::None, value)
+    }
+
     /// Return the type of the record elimination.
     pub fn record_elim_type(
         &mut self,
@@ -163,18 +168,6 @@ pub fn check_type(state: &mut State<'_>, term: &Term, expected_type: &Arc<Value>
         (Term::Sequence(_), _) => state.report(Message::NoSequenceConversion {
             expected_type: expected_type.clone(),
         }),
-        (
-            Term::FunctionTerm(_, output_term),
-            Value::FunctionType(_, input_type, output_closure),
-        ) => {
-            let input_term = state.push_local_param(input_type.clone());
-            let output_type = output_closure.elim(state.globals, input_term);
-            check_type(state, output_term, &output_type);
-            state.pop_local();
-        }
-        (Term::FunctionTerm(_, _), _) => {
-            state.report(Message::TooManyInputsInFunctionTerm);
-        }
         (term, _) => match synth_type(state, term) {
             found_type if state.is_subtype(&found_type, expected_type) => {}
             found_type => state.report(Message::MismatchedTypes {
@@ -350,11 +343,26 @@ pub fn synth_type(state: &mut State<'_>, term: &Term) -> Arc<Value> {
                 (_, _) => Arc::new(Value::Error),
             }
         }
-        Term::FunctionTerm(_, _) => {
-            state.report(Message::AmbiguousTerm {
-                term: AmbiguousTerm::FunctionTerm,
-            });
-            Arc::new(Value::Error)
+        Term::FunctionTerm(input_name_hint, input_type, output_term) => {
+            let input_type = match is_type(state, input_type) {
+                None => Arc::new(Value::Error),
+                Some(_) => state.eval_term(input_type),
+            };
+
+            state.push_local_param(input_type.clone());
+            let output_type = synth_type(state, output_term);
+            let output_type = state.read_back_value(&output_type);
+            state.pop_local();
+
+            Arc::new(Value::FunctionType(
+                Some(input_name_hint.clone()),
+                input_type,
+                Closure::new(
+                    state.universe_offset,
+                    state.values.clone(),
+                    Arc::new(output_type.clone()),
+                ),
+            ))
         }
         Term::FunctionElim(head_term, input_term) => {
             let head_type = synth_type(state, head_term);

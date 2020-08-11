@@ -375,6 +375,7 @@ pub fn check_type<S: AsRef<str>>(
                 |core_output_term, (_, input_name)| {
                     core::Term::FunctionTerm(
                         input_name.as_ref().to_owned(),
+                        todo!(),
                         Arc::new(core_output_term),
                     )
                 },

@@ -157,19 +157,33 @@ where
             alloc,
             prec > Prec::Arrow,
             (alloc.nil())
+                .append("Fun")
+                .append(alloc.space())
+                .append("(")
+                .append("_")
+                .append(alloc.space())
+                .append(":")
+                .append(alloc.space())
                 .append(from_term_prec(alloc, input_type, Prec::App))
+                .append(")")
                 .append(alloc.space())
                 .append("->")
                 .append(alloc.space())
                 .append(from_term_prec(alloc, output_type, Prec::Arrow)),
         ),
-        Term::FunctionTerm(_, output_term) => paren(
+        Term::FunctionTerm(_, input_type, output_term) => paren(
             alloc,
             prec > Prec::Expr,
             (alloc.nil())
                 .append("fun")
                 .append(alloc.space())
+                .append("(")
                 .append("_")
+                .append(alloc.space())
+                .append(":")
+                .append(alloc.space())
+                .append(from_term_prec(alloc, input_type, Prec::Term))
+                .append(")")
                 .append(alloc.space())
                 .append("=>")
                 .group()

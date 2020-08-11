@@ -20,7 +20,6 @@ pub enum Message {
         expected_label: String,
         head_type: Arc<Value>,
     },
-    TooManyInputsInFunctionTerm,
     TooManyInputsInFunctionElim {
         head_type: Arc<Value>,
     },
@@ -43,7 +42,6 @@ pub enum Message {
 #[derive(Clone, Debug)]
 pub enum AmbiguousTerm {
     Sequence,
-    FunctionTerm,
 }
 
 #[derive(Clone, Debug)]

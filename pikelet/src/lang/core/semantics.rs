@@ -57,7 +57,7 @@ pub enum Value {
     /// Function terms.
     ///
     /// Also known as: lambda abstraction, anonymous function.
-    FunctionTerm(String, Closure),
+    FunctionTerm(String, Arc<Value>, Closure),
 
     /// Error sentinel.
     Error,
@@ -323,8 +323,9 @@ pub fn eval_term(
                 Closure::new(universe_offset, values.clone(), output_type.clone()),
             ))
         }
-        Term::FunctionTerm(input_name, output_term) => Arc::new(Value::FunctionTerm(
+        Term::FunctionTerm(input_name, input_type, output_term) => Arc::new(Value::FunctionTerm(
             input_name.clone(),
+            eval_term(globals, universe_offset, values, input_type),
             Closure::new(universe_offset, values.clone(), output_term.clone()),
         )),
         Term::FunctionElim(head, input) => {
@@ -397,7 +398,7 @@ fn apply_function_elim(globals: &Globals, head_value: &Value, input: Arc<LazyVal
             Arc::new(Value::Unstuck(head.clone(), spine, Arc::new(value)))
         }
 
-        Value::FunctionTerm(_, output_closure) => {
+        Value::FunctionTerm(_, _, output_closure) => {
             output_closure.elim(globals, input.force(globals).clone())
         }
 
@@ -510,13 +511,14 @@ pub fn read_back_value(
 
             Term::FunctionType(input_name_hint.clone(), input_type, Arc::new(output_type))
         }
-        Value::FunctionTerm(input_name_hint, output_closure) => {
+        Value::FunctionTerm(input_name_hint, input_type, output_closure) => {
             let local = Arc::new(Value::local(local_size.next_level()));
+            let input_type = Arc::new(read_back_value(globals, local_size, unfold, input_type));
             let output_term = output_closure.elim(globals, local);
             let output_term =
                 read_back_value(globals, local_size.increment(), unfold, &output_term);
 
-            Term::FunctionTerm(input_name_hint.clone(), Arc::new(output_term))
+            Term::FunctionTerm(input_name_hint.clone(), input_type, Arc::new(output_term))
         }
 
         Value::Error => Term::Error,
@@ -631,7 +633,14 @@ fn is_equal(globals: &Globals, local_size: LocalSize, value0: &Value, value1: &V
                 &output_closure1.elim(globals, local),
             )
         }
-        (Value::FunctionTerm(_, output_closure0), Value::FunctionTerm(_, output_closure1)) => {
+        (
+            Value::FunctionTerm(_, input_type0, output_closure0),
+            Value::FunctionTerm(_, input_type1, output_closure1),
+        ) => {
+            if !is_equal(globals, local_size, input_type1, input_type0) {
+                return false;
+            }
+
             let local = Arc::new(Value::local(local_size.next_level()));
             is_equal(
                 globals,

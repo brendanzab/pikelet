@@ -94,7 +94,7 @@ pub enum Term {
     /// Function terms.
     ///
     /// Also known as: lambda abstraction, anonymous function.
-    FunctionTerm(String, Arc<Term>),
+    FunctionTerm(String, Arc<Term>, Arc<Term>),
     /// Function eliminations.
     ///
     /// Also known as: function application.
