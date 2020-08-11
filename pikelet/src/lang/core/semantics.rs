@@ -49,7 +49,7 @@ pub enum Value {
     /// Record types.
     RecordType(RecordTypeClosure),
     /// Record terms.
-    RecordTerm(BTreeMap<String, Arc<Value>>),
+    RecordTerm(BTreeMap<String, Arc<Value>>, RecordTypeClosure),
     /// Function types.
     ///
     /// Also known as: pi type, dependent product type.
@@ -164,13 +164,14 @@ impl RecordTypeClosure {
     pub fn entries<'closure>(
         &'closure self,
         globals: &Globals,
-        mut on_entry: impl FnMut(&'closure str, Arc<Value>) -> Arc<Value>,
+        mut on_entry: impl FnMut(&'closure str, (Arc<Value>, Term)) -> Arc<Value>,
     ) {
         let universe_offset = self.universe_offset;
         let mut values = self.values.clone();
         for (label, entry_type) in self.entries.iter() {
             let entry_type = eval_term(globals, universe_offset, &mut values, entry_type);
-            values.push(on_entry(label, entry_type));
+            let entry_type_ = read_back_value(globals, values.size(), Unfold::None, &entry_type);
+            values.push(on_entry(label, (entry_type, entry_type_)));
         }
     }
 }
@@ -292,12 +293,13 @@ pub fn eval_term(
             Arc::new(Value::Sequence(value_entries))
         }
         Term::Ann(term, _) => eval_term(globals, universe_offset, values, term),
-        Term::RecordType(type_entries) => Arc::new(Value::RecordType(RecordTypeClosure::new(
-            universe_offset,
-            values.clone(),
-            type_entries.clone(),
-        ))),
-        Term::RecordTerm(term_entries) => {
+        Term::RecordType(type_entries) => {
+            let record_type_closure =
+                RecordTypeClosure::new(universe_offset, values.clone(), type_entries.clone());
+
+            Arc::new(Value::RecordType(record_type_closure))
+        }
+        Term::RecordTerm(term_entries, type_entries) => {
             let value_entries = term_entries
                 .iter()
                 .map(|(label, entry_term)| {
@@ -305,8 +307,10 @@ pub fn eval_term(
                     (label.clone(), entry_term)
                 })
                 .collect();
+            let record_type_closure =
+                RecordTypeClosure::new(universe_offset, values.clone(), type_entries.clone());
 
-            Arc::new(Value::RecordTerm(value_entries))
+            Arc::new(Value::RecordTerm(value_entries, record_type_closure))
         }
         Term::RecordElim(head, label) => {
             let head = eval_term(globals, universe_offset, values, head);
@@ -369,7 +373,7 @@ fn apply_record_elim(head_value: &Value, label: &str) -> Arc<Value> {
             Arc::new(Value::Unstuck(head.clone(), spine, Arc::new(value)))
         }
 
-        Value::RecordTerm(term_entries) => match term_entries.get(label) {
+        Value::RecordTerm(term_entries, _) => match term_entries.get(label) {
             Some(value) => value.clone(),
             None => Arc::new(Value::Error),
         },
@@ -464,8 +468,7 @@ pub fn read_back_value(
             let mut type_entries = Vec::with_capacity(closure.entries.len());
 
             closure.entries(globals, |label, entry_type| {
-                let entry_type = read_back_value(globals, local_size, unfold, &entry_type);
-                type_entries.push((label.to_owned(), Arc::new(entry_type)));
+                type_entries.push((label.to_owned(), Arc::new(entry_type.1)));
 
                 let local_level = local_size.next_level();
                 local_size = local_size.increment();
@@ -475,7 +478,7 @@ pub fn read_back_value(
 
             Term::RecordType(type_entries.into())
         }
-        Value::RecordTerm(value_entries) => {
+        Value::RecordTerm(value_entries, record_type_closure) => {
             let term_entries = value_entries
                 .iter()
                 .map(|(label, entry_value)| {
@@ -484,7 +487,19 @@ pub fn read_back_value(
                 })
                 .collect();
 
-            Term::RecordTerm(term_entries)
+            let mut local_size = local_size;
+            let mut type_entries = Vec::with_capacity(record_type_closure.entries.len());
+
+            record_type_closure.entries(globals, |label, entry_type| {
+                type_entries.push((label.to_owned(), Arc::new(entry_type.1)));
+
+                let local_level = local_size.next_level();
+                local_size = local_size.increment();
+
+                Arc::new(Value::local(local_level))
+            });
+
+            Term::RecordTerm(term_entries, type_entries.into())
         }
         Value::FunctionType(input_name_hint, input_type, output_closure) => {
             let local = Arc::new(Value::local(local_size.next_level()));
@@ -573,40 +588,18 @@ fn is_equal(globals: &Globals, local_size: LocalSize, value0: &Value, value1: &V
                 },
             )
         }
-        (Value::RecordType(closure0), Value::RecordType(closure1)) => {
-            if closure0.entries.len() != closure1.entries.len() {
-                return false;
-            }
-
-            let mut local_size = local_size;
-            let universe_offset0 = closure0.universe_offset;
-            let universe_offset1 = closure1.universe_offset;
-            let mut values0 = closure0.values.clone();
-            let mut values1 = closure1.values.clone();
-
-            for ((label0, entry_type0), (label1, entry_type1)) in
-                Iterator::zip(closure0.entries.iter(), closure1.entries.iter())
-            {
-                if label0 != label1 {
-                    return false;
-                }
-
-                let entry_type0 = eval_term(globals, universe_offset0, &mut values0, entry_type0);
-                let entry_type1 = eval_term(globals, universe_offset1, &mut values1, entry_type1);
-
-                if !is_equal(globals, local_size, &entry_type0, &entry_type1) {
-                    return false;
-                }
-
-                let local_level = local_size.next_level();
-                values0.push(Arc::new(Value::local(local_level)));
-                values1.push(Arc::new(Value::local(local_level)));
-                local_size = local_size.increment();
-            }
-
-            true
+        (Value::RecordType(record_type_closure0), Value::RecordType(record_type_closure1)) => {
+            is_record_type_closure_equal(
+                globals,
+                local_size,
+                record_type_closure0,
+                record_type_closure1,
+            )
         }
-        (Value::RecordTerm(value_entries0), Value::RecordTerm(value_entries1)) => {
+        (
+            Value::RecordTerm(value_entries0, record_type_closure0),
+            Value::RecordTerm(value_entries1, record_type_closure1),
+        ) => {
             if value_entries0.len() != value_entries1.len() {
                 return false;
             }
@@ -615,6 +608,11 @@ fn is_equal(globals: &Globals, local_size: LocalSize, value0: &Value, value1: &V
                 |((label0, entry_value0), (label1, entry_value1))| {
                     label0 == label1 && is_equal(globals, local_size, entry_value0, entry_value1)
                 },
+            ) && is_record_type_closure_equal(
+                globals,
+                local_size,
+                record_type_closure0,
+                record_type_closure1,
             )
         }
         (
@@ -648,6 +646,46 @@ fn is_equal(globals: &Globals, local_size: LocalSize, value0: &Value, value1: &V
         // Anything else is not equal!
         (_, _) => false,
     }
+}
+
+fn is_record_type_closure_equal(
+    globals: &Globals,
+    local_size: LocalSize,
+    record_type_closure0: &RecordTypeClosure,
+    record_type_closure1: &RecordTypeClosure,
+) -> bool {
+    if record_type_closure0.entries.len() != record_type_closure1.entries.len() {
+        return false;
+    }
+
+    let mut local_size = local_size;
+    let universe_offset0 = record_type_closure0.universe_offset;
+    let universe_offset1 = record_type_closure1.universe_offset;
+    let mut values0 = record_type_closure0.values.clone();
+    let mut values1 = record_type_closure1.values.clone();
+
+    for ((label0, entry_type0), (label1, entry_type1)) in Iterator::zip(
+        record_type_closure0.entries.iter(),
+        record_type_closure1.entries.iter(),
+    ) {
+        if label0 != label1 {
+            return false;
+        }
+
+        let entry_type0 = eval_term(globals, universe_offset0, &mut values0, entry_type0);
+        let entry_type1 = eval_term(globals, universe_offset1, &mut values1, entry_type1);
+
+        if !is_equal(globals, local_size, &entry_type0, &entry_type1) {
+            return false;
+        }
+
+        let local_level = local_size.next_level();
+        values0.push(Arc::new(Value::local(local_level)));
+        values1.push(Arc::new(Value::local(local_level)));
+        local_size = local_size.increment();
+    }
+
+    true
 }
 
 /// Check that one type is a subtype of another type.

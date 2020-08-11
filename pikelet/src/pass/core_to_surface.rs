@@ -148,19 +148,35 @@ pub fn from_term(state: &mut State<'_>, term: &Term) -> surface::Term<String> {
                     }
                 })
                 .collect();
+            state.pop_many_names(type_entries.len());
 
             surface::Term::RecordType(0..0, core_type_entries)
         }
-        Term::RecordTerm(term_entries) => {
+        Term::RecordTerm(term_entries, type_entries) => {
             let core_term_entries = term_entries
                 .iter()
                 .map(|(entry_name, entry_term)| {
                     (0..0, entry_name.clone(), from_term(state, entry_term))
                 })
                 .collect();
-            state.pop_many_names(term_entries.len());
 
-            surface::Term::RecordTerm(0..0, core_term_entries)
+            let core_type_entries = type_entries
+                .iter()
+                .map(|(label, r#type)| {
+                    let r#type = from_term(state, r#type);
+                    match state.push_name(Some(label)) {
+                        name if name == *label => (0..0, label.clone(), None, r#type),
+                        name => (0..0, label.clone(), Some(name), r#type),
+                    }
+                })
+                .collect();
+            state.pop_many_names(type_entries.len());
+
+            surface::Term::Ann(
+                Box::new(surface::Term::RecordTerm(0..0, core_term_entries)),
+                // TODO: Only add this annotation if necessary, using bidirectional distillation
+                Box::new(surface::Term::RecordType(0..0, core_type_entries)),
+            )
         }
         Term::RecordElim(head_term, label) => {
             surface::Term::RecordElim(Box::new(from_term(state, head_term)), 0..0, label.clone())

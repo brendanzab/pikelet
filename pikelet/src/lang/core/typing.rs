@@ -6,6 +6,7 @@
 //! and doesn't need to perform any additional elaboration.
 //! We can use it as a way to validate that elaborated terms are well-formed.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use crate::lang::core::semantics::{self, Elim, Head, RecordTypeClosure, Value};
@@ -162,34 +163,6 @@ pub fn check_type(state: &mut State<'_>, term: &Term, expected_type: &Arc<Value>
         (Term::Sequence(_), _) => state.report(Message::NoSequenceConversion {
             expected_type: expected_type.clone(),
         }),
-        (Term::RecordTerm(term_entries), Value::RecordType(closure)) => {
-            let mut missing_labels = Vec::new();
-
-            let mut pending_term_entries = term_entries.clone();
-
-            closure.entries(state.globals, |label, r#type| {
-                match pending_term_entries.remove(label) {
-                    Some(entry_term) => {
-                        check_type(state, &entry_term, &r#type);
-                        state.eval_term(&entry_term)
-                    }
-                    None => {
-                        missing_labels.push(label.to_owned());
-                        Arc::new(Value::Error)
-                    }
-                }
-            });
-
-            if !missing_labels.is_empty() && !pending_term_entries.is_empty() {
-                let unexpected_labels = (pending_term_entries.into_iter())
-                    .map(|(label, _)| label)
-                    .collect();
-                state.report(Message::InvalidRecordTerm {
-                    missing_labels,
-                    unexpected_labels,
-                });
-            }
-        }
         (
             Term::FunctionTerm(_, output_term),
             Value::FunctionType(_, input_type, output_closure),
@@ -264,42 +237,25 @@ pub fn synth_type(state: &mut State<'_>, term: &Term) -> Arc<Value> {
             check_type(state, term, &r#type);
             r#type
         }
-        Term::RecordTerm(term_entries) => {
-            if term_entries.is_empty() {
-                Arc::from(Value::RecordType(RecordTypeClosure::new(
-                    state.universe_offset,
-                    state.values.clone(),
-                    Arc::new([]),
-                )))
-            } else {
-                state.report(Message::AmbiguousTerm {
-                    term: AmbiguousTerm::RecordTerm,
-                });
-                Arc::new(Value::Error)
-            }
-        }
         Term::RecordType(type_entries) => {
-            use std::collections::BTreeSet;
-
             let mut max_level = UniverseLevel(0);
             let mut duplicate_labels = Vec::new();
             let mut seen_labels = BTreeSet::new();
 
-            for (name, r#type) in type_entries.iter() {
-                if !seen_labels.insert(name) {
-                    duplicate_labels.push(name.clone());
-                }
-                max_level = match is_type(state, r#type) {
+            for (label, entry_type) in type_entries.iter() {
+                max_level = match is_type(state, entry_type) {
                     Some(level) => std::cmp::max(max_level, level),
                     None => {
                         state.pop_many_locals(seen_labels.len());
                         return Arc::new(Value::Error);
                     }
                 };
-                let r#type = state.eval_term(r#type);
-                state.push_local_param(r#type);
+                let entry_type = state.eval_term(entry_type);
+                state.push_local_param(entry_type);
+                if !seen_labels.insert(label) {
+                    duplicate_labels.push(label.clone());
+                }
             }
-
             state.pop_many_locals(seen_labels.len());
 
             if !duplicate_labels.is_empty() {
@@ -307,6 +263,53 @@ pub fn synth_type(state: &mut State<'_>, term: &Term) -> Arc<Value> {
             }
 
             Arc::new(Value::Universe(max_level))
+        }
+        Term::RecordTerm(term_entries, type_entries) => {
+            let mut missing_labels = Vec::new();
+            let mut duplicate_labels = Vec::new();
+            let mut seen_labels = BTreeSet::new();
+
+            for (label, entry_type) in type_entries.iter() {
+                if is_type(state, entry_type).is_none() {
+                    state.pop_many_locals(seen_labels.len());
+                    return Arc::new(Value::Error);
+                }
+                let entry_type = state.eval_term(entry_type);
+                let entry_term = match term_entries.get(label) {
+                    Some(entry_term) => {
+                        check_type(state, &entry_term, &entry_type);
+                        state.eval_term(&entry_term)
+                    }
+                    None => {
+                        missing_labels.push(label.to_owned());
+                        Arc::new(Value::Error)
+                    }
+                };
+                state.push_local(entry_term, entry_type);
+                if !seen_labels.insert(label) {
+                    duplicate_labels.push(label.clone());
+                }
+            }
+            state.pop_many_locals(seen_labels.len());
+
+            let unexpected_labels = term_entries
+                .iter()
+                .filter(|(label, _)| !seen_labels.contains(label))
+                .map(|(label, _)| label.to_owned())
+                .collect::<Vec<_>>();
+
+            if !missing_labels.is_empty() || !unexpected_labels.is_empty() {
+                state.report(Message::InvalidRecordTerm {
+                    missing_labels,
+                    unexpected_labels,
+                });
+            }
+
+            Arc::new(Value::RecordType(RecordTypeClosure::new(
+                state.universe_offset,
+                state.values.clone(),
+                type_entries.clone(),
+            )))
         }
         Term::RecordElim(head_term, label) => {
             let head_type = synth_type(state, head_term);

@@ -285,7 +285,7 @@ pub fn check_type<S: AsRef<str>>(
             });
             core::Term::Error
         }
-        (Term::RecordTerm(_, term_entries), Value::RecordType(closure)) => {
+        (Term::RecordTerm(_, term_entries), Value::RecordType(record_type_closure)) => {
             use std::collections::btree_map::Entry;
             use std::collections::BTreeMap;
 
@@ -304,21 +304,22 @@ pub fn check_type<S: AsRef<str>>(
                 }
             }
 
-            closure.entries(
-                state.globals,
-                |label, entry_type| match pending_term_entries.remove(label) {
+            let mut core_type_entries = Vec::with_capacity(core_term_entries.len());
+            record_type_closure.entries(state.globals, |label, entry_type| {
+                match pending_term_entries.remove(label) {
                     Some((_, entry_term)) => {
-                        let core_entry_term = check_type(state, entry_term, &entry_type);
+                        let core_entry_term = check_type(state, entry_term, &entry_type.0);
                         let core_entry_value = state.eval_term(&core_entry_term);
                         core_term_entries.insert(label.to_owned(), Arc::new(core_entry_term));
+                        core_type_entries.push((label.to_owned(), Arc::new(entry_type.1)));
                         core_entry_value
                     }
                     None => {
                         missing_labels.push(label.to_owned());
                         Arc::new(Value::Error)
                     }
-                },
-            );
+                }
+            });
 
             if !duplicate_labels.is_empty()
                 || !missing_labels.is_empty()
@@ -335,7 +336,7 @@ pub fn check_type<S: AsRef<str>>(
                 });
             }
 
-            core::Term::RecordTerm(core_term_entries)
+            core::Term::RecordTerm(core_term_entries, core_type_entries.into())
         }
         (Term::FunctionTerm(_, input_names, output_term), _) => {
             let mut seen_input_count = 0;
@@ -457,7 +458,7 @@ pub fn synth_type<S: AsRef<str>>(
         Term::RecordTerm(_, term_entries) => {
             if term_entries.is_empty() {
                 (
-                    core::Term::RecordTerm(BTreeMap::new()),
+                    core::Term::RecordTerm(BTreeMap::new(), Vec::new().into()),
                     Arc::from(Value::RecordType(RecordTypeClosure::new(
                         state.universe_offset,
                         state.values.clone(),

@@ -115,7 +115,7 @@ fn view_term<M: 'static>(term: &pikelet::lang::core::Term) -> Element<M> {
             .push(Text::new(" : "))
             .push(view_term(r#type))
             .into(),
-        Term::RecordTerm(_) => Text::new("todo").into(),
+        Term::RecordTerm(_, _) => Text::new("todo").into(),
         Term::RecordType(_) => Text::new("todo").into(),
         Term::RecordElim(_, _) => Text::new("todo").into(),
         Term::FunctionType(_, _, _) => Text::new("todo").into(),

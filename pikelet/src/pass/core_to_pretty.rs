@@ -90,29 +90,65 @@ where
                     .group()
             })))
             .append("}"),
-        Term::RecordTerm(term_entries) => (alloc.nil())
-            .append("record")
-            .append(alloc.space())
-            .append("{")
-            .group()
-            .append(alloc.concat(term_entries.iter().map(|(label, term)| {
+        Term::RecordTerm(term_entries, type_entries) => {
+            let record_term = (alloc.nil())
+                .append("record")
+                .append(alloc.space())
+                .append("{")
+                .group()
+                .append(alloc.concat(term_entries.iter().map(|(label, term)| {
+                    (alloc.nil())
+                        .append(alloc.hardline())
+                        .append(alloc.text(label))
+                        .append(alloc.space())
+                        .append("=")
+                        .group()
+                        .append(
+                            (alloc.space())
+                                .append(from_term_prec(alloc, term, Prec::Term))
+                                .append(",")
+                                .group()
+                                .nest(4),
+                        )
+                        .nest(4)
+                        .group()
+                })))
+                .append("}");
+
+            let record_type = (alloc.nil())
+                .append("Record")
+                .append(alloc.space())
+                .append("{")
+                .group()
+                .append(alloc.concat(type_entries.iter().map(|(label, r#type)| {
+                    (alloc.nil())
+                        .append(alloc.hardline())
+                        .append(alloc.text(label))
+                        .append(alloc.space())
+                        .append(":")
+                        .group()
+                        .append(
+                            (alloc.space())
+                                .append(from_term_prec(alloc, r#type, Prec::Term))
+                                .append(",")
+                                .group()
+                                .nest(4),
+                        )
+                        .nest(4)
+                        .group()
+                })))
+                .append("}");
+
+            paren(
+                alloc,
+                prec > Prec::Term,
                 (alloc.nil())
-                    .append(alloc.hardline())
-                    .append(alloc.text(label))
+                    .append(record_term)
                     .append(alloc.space())
-                    .append("=")
-                    .group()
-                    .append(
-                        (alloc.space())
-                            .append(from_term_prec(alloc, term, Prec::Term))
-                            .append(",")
-                            .group()
-                            .nest(4),
-                    )
-                    .nest(4)
-                    .group()
-            })))
-            .append("}"),
+                    .append(":")
+                    .append((alloc.space()).append(record_type).group().nest(4)),
+            )
+        }
         Term::RecordElim(head_term, label) => (alloc.nil())
             .append(from_term_prec(alloc, head_term, Prec::Atomic))
             .append(".")
