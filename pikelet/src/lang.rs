@@ -1,4 +1,11 @@
-//! Intermediate representations of Pikelet.
+//! Intermediate languages of the Pikelet compiler.
 
-pub mod core;
 pub mod surface;
+//       🠃
+pub mod core;
+//       🠃
+pub mod anf;
+//       🠃
+pub mod cc;
+//       🠃
+//      ...
