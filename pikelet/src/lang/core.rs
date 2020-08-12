@@ -67,26 +67,19 @@ impl From<u32> for UniverseOffset {
 /// Terms in the core language.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Term {
-    /// The type of types.
-    Universe(UniverseLevel),
     /// Global variables.
     Global(String),
     /// Local variables.
     Local(LocalIndex),
-    /// Constants.
-    Constant(Constant),
-    /// Ordered sequences.
-    Sequence(Vec<Arc<Term>>),
+
     /// Annotated terms
     Ann(Arc<Term>, Arc<Term>),
-    /// Record types.
-    RecordType(Arc<[(String, Arc<Term>)]>),
-    /// Record terms.
-    RecordTerm(BTreeMap<String, Arc<Term>>),
-    /// Record eliminations.
-    ///
-    /// Also known as: record projection, field lookup.
-    RecordElim(Arc<Term>, String),
+
+    /// The type of types.
+    Universe(UniverseLevel),
+    /// Lift a term by the given number of universe levels.
+    Lift(Arc<Term>, UniverseOffset),
+
     /// Function types.
     ///
     /// Also known as: pi type, dependent product type.
@@ -99,8 +92,22 @@ pub enum Term {
     ///
     /// Also known as: function application.
     FunctionElim(Arc<Term>, Arc<Term>),
-    /// Lift a term by the given number of universe levels.
-    Lift(Arc<Term>, UniverseOffset),
+
+    /// Record types.
+    RecordType(Arc<[(String, Arc<Term>)]>),
+    /// Record terms.
+    RecordTerm(BTreeMap<String, Arc<Term>>),
+    /// Record eliminations.
+    ///
+    /// Also known as: record projection, field lookup.
+    RecordElim(Arc<Term>, String),
+
+    /// Ordered sequences.
+    Sequence(Vec<Arc<Term>>),
+
+    /// Constants.
+    Constant(Constant),
+
     /// Error sentinel.
     Error,
 }

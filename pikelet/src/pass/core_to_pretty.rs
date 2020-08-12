@@ -28,10 +28,6 @@ where
     D::Doc: Clone,
 {
     match term {
-        Term::Universe(level) => (alloc.nil())
-            .append("Type")
-            .append("^")
-            .append(alloc.as_string(level.0)),
         Term::Global(name) => (alloc.nil())
             .append(alloc.text("global"))
             .append(alloc.space())
@@ -40,6 +36,7 @@ where
             .append(alloc.text("local"))
             .append(alloc.space())
             .append(alloc.as_string(index.0)),
+
         Term::Ann(term, r#type) => paren(
             alloc,
             prec > Prec::Term,
@@ -54,19 +51,50 @@ where
                         .nest(4),
                 ),
         ),
-        Term::Constant(constant) => from_constant(alloc, constant),
-        Term::Sequence(term_entries) => (alloc.nil())
-            .append("[")
-            .group()
-            .append(
-                alloc.intersperse(
-                    term_entries
-                        .iter()
-                        .map(|term| from_term_prec(alloc, term, Prec::Term).group().nest(4)),
-                    alloc.text(",").append(alloc.space()),
-                ),
-            )
-            .append("]"),
+
+        Term::Universe(level) => (alloc.nil())
+            .append("Type")
+            .append("^")
+            .append(alloc.as_string(level.0)),
+        Term::Lift(term, shift) => (alloc.nil())
+            .append(from_term_prec(alloc, term, Prec::Atomic))
+            .append("^")
+            .append(alloc.as_string(shift.0)),
+
+        Term::FunctionType(_, input_type, output_type) => paren(
+            alloc,
+            prec > Prec::Arrow,
+            (alloc.nil())
+                .append(from_term_prec(alloc, input_type, Prec::App))
+                .append(alloc.space())
+                .append("->")
+                .append(alloc.space())
+                .append(from_term_prec(alloc, output_type, Prec::Arrow)),
+        ),
+        Term::FunctionTerm(_, output_term) => paren(
+            alloc,
+            prec > Prec::Expr,
+            (alloc.nil())
+                .append("fun")
+                .append(alloc.space())
+                .append("_")
+                .append(alloc.space())
+                .append("=>")
+                .group()
+                .append(alloc.space())
+                .append(from_term_prec(alloc, output_term, Prec::Expr).nest(4)),
+        ),
+        Term::FunctionElim(head_term, input_term) => paren(
+            alloc,
+            prec > Prec::App,
+            from_term_prec(alloc, head_term, Prec::App).append(
+                (alloc.space())
+                    .append(from_term_prec(alloc, input_term, Prec::Arrow))
+                    .group()
+                    .nest(4),
+            ),
+        ),
+
         Term::RecordType(type_entries) => (alloc.nil())
             .append("Record")
             .append(alloc.space())
@@ -117,43 +145,22 @@ where
             .append(from_term_prec(alloc, head_term, Prec::Atomic))
             .append(".")
             .append(alloc.text(label)),
-        Term::FunctionType(_, input_type, output_type) => paren(
-            alloc,
-            prec > Prec::Arrow,
-            (alloc.nil())
-                .append(from_term_prec(alloc, input_type, Prec::App))
-                .append(alloc.space())
-                .append("->")
-                .append(alloc.space())
-                .append(from_term_prec(alloc, output_type, Prec::Arrow)),
-        ),
-        Term::FunctionTerm(_, output_term) => paren(
-            alloc,
-            prec > Prec::Expr,
-            (alloc.nil())
-                .append("fun")
-                .append(alloc.space())
-                .append("_")
-                .append(alloc.space())
-                .append("=>")
-                .group()
-                .append(alloc.space())
-                .append(from_term_prec(alloc, output_term, Prec::Expr).nest(4)),
-        ),
-        Term::FunctionElim(head_term, input_term) => paren(
-            alloc,
-            prec > Prec::App,
-            from_term_prec(alloc, head_term, Prec::App).append(
-                (alloc.space())
-                    .append(from_term_prec(alloc, input_term, Prec::Arrow))
-                    .group()
-                    .nest(4),
-            ),
-        ),
-        Term::Lift(term, shift) => (alloc.nil())
-            .append(from_term_prec(alloc, term, Prec::Atomic))
-            .append("^")
-            .append(alloc.as_string(shift.0)),
+
+        Term::Sequence(term_entries) => (alloc.nil())
+            .append("[")
+            .group()
+            .append(
+                alloc.intersperse(
+                    term_entries
+                        .iter()
+                        .map(|term| from_term_prec(alloc, term, Prec::Term).group().nest(4)),
+                    alloc.text(",").append(alloc.space()),
+                ),
+            )
+            .append("]"),
+
+        Term::Constant(constant) => from_constant(alloc, constant),
+
         Term::Error => alloc.text("!"),
     }
 }

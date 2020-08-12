@@ -106,6 +106,20 @@ impl<'me> State<'me> {
 
 pub fn from_term(state: &mut State<'_>, term: &Term) -> surface::Term<String> {
     match term {
+        Term::Global(name) => match state.globals.get(name) {
+            Some(_) => surface::Term::Name(0..0, name.to_owned()),
+            None => surface::Term::Error(0..0), // TODO: Log error?
+        },
+        Term::Local(index) => match state.names.get(*index) {
+            Some(name) => surface::Term::Name(0..0, name.clone()),
+            None => surface::Term::Error(0..0), // TODO: Log error?
+        },
+
+        Term::Ann(term, r#type) => surface::Term::Ann(
+            Box::new(from_term(state, term)),
+            Box::new(from_term(state, r#type)),
+        ),
+
         Term::Universe(level) => {
             let universe0 = match state.globals.get("Type") {
                 Some(_) => surface::Term::Name(0..0, "Type".to_owned()),
@@ -116,55 +130,10 @@ pub fn from_term(state: &mut State<'_>, term: &Term) -> surface::Term<String> {
                 UniverseLevel(level) => surface::Term::Lift(0..0, Box::new(universe0), *level),
             }
         }
-        Term::Global(name) => match state.globals.get(name) {
-            Some(_) => surface::Term::Name(0..0, name.to_owned()),
-            None => surface::Term::Error(0..0), // TODO: Log error?
-        },
-        Term::Local(index) => match state.names.get(*index) {
-            Some(name) => surface::Term::Name(0..0, name.clone()),
-            None => surface::Term::Error(0..0), // TODO: Log error?
-        },
-        Term::Constant(constant) => delaborate_constant(constant),
-        Term::Sequence(entry_terms) => {
-            let core_entry_terms = entry_terms
-                .iter()
-                .map(|entry_term| from_term(state, entry_term))
-                .collect();
+        Term::Lift(term, UniverseOffset(offset)) => {
+            surface::Term::Lift(0..0, Box::new(from_term(state, term)), *offset)
+        }
 
-            surface::Term::Sequence(0..0, core_entry_terms)
-        }
-        Term::Ann(term, r#type) => surface::Term::Ann(
-            Box::new(from_term(state, term)),
-            Box::new(from_term(state, r#type)),
-        ),
-        Term::RecordType(type_entries) => {
-            let core_type_entries = type_entries
-                .iter()
-                .map(|(label, r#type)| {
-                    let r#type = from_term(state, r#type);
-                    match state.push_name(Some(label)) {
-                        name if name == *label => (0..0, label.clone(), None, r#type),
-                        name => (0..0, label.clone(), Some(name), r#type),
-                    }
-                })
-                .collect();
-
-            surface::Term::RecordType(0..0, core_type_entries)
-        }
-        Term::RecordTerm(term_entries) => {
-            let core_term_entries = term_entries
-                .iter()
-                .map(|(entry_name, entry_term)| {
-                    (0..0, entry_name.clone(), from_term(state, entry_term))
-                })
-                .collect();
-            state.pop_many_names(term_entries.len());
-
-            surface::Term::RecordTerm(0..0, core_term_entries)
-        }
-        Term::RecordElim(head_term, label) => {
-            surface::Term::RecordElim(Box::new(from_term(state, head_term)), 0..0, label.clone())
-        }
         Term::FunctionType(input_name_hint, input_type, output_type) => {
             // FIXME: properly group inputs!
             let input_type = from_term(state, input_type);
@@ -209,9 +178,47 @@ pub fn from_term(state: &mut State<'_>, term: &Term) -> surface::Term<String> {
             let head_term = from_term(state, current_head_term);
             surface::Term::FunctionElim(Box::new(head_term), input_terms)
         }
-        Term::Lift(term, UniverseOffset(offset)) => {
-            surface::Term::Lift(0..0, Box::new(from_term(state, term)), *offset)
+
+        Term::RecordType(type_entries) => {
+            let core_type_entries = type_entries
+                .iter()
+                .map(|(label, r#type)| {
+                    let r#type = from_term(state, r#type);
+                    match state.push_name(Some(label)) {
+                        name if name == *label => (0..0, label.clone(), None, r#type),
+                        name => (0..0, label.clone(), Some(name), r#type),
+                    }
+                })
+                .collect();
+
+            surface::Term::RecordType(0..0, core_type_entries)
         }
+        Term::RecordTerm(term_entries) => {
+            let core_term_entries = term_entries
+                .iter()
+                .map(|(entry_name, entry_term)| {
+                    (0..0, entry_name.clone(), from_term(state, entry_term))
+                })
+                .collect();
+            state.pop_many_names(term_entries.len());
+
+            surface::Term::RecordTerm(0..0, core_term_entries)
+        }
+        Term::RecordElim(head_term, label) => {
+            surface::Term::RecordElim(Box::new(from_term(state, head_term)), 0..0, label.clone())
+        }
+
+        Term::Sequence(entry_terms) => {
+            let core_entry_terms = entry_terms
+                .iter()
+                .map(|entry_term| from_term(state, entry_term))
+                .collect();
+
+            surface::Term::Sequence(0..0, core_entry_terms)
+        }
+
+        Term::Constant(constant) => delaborate_constant(constant),
+
         Term::Error => surface::Term::Error(0..0),
     }
 }

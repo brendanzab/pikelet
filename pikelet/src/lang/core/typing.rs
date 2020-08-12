@@ -132,6 +132,49 @@ pub fn is_type(state: &mut State<'_>, term: &Term) -> Option<UniverseLevel> {
 pub fn check_type(state: &mut State<'_>, term: &Term, expected_type: &Arc<Value>) {
     match (term, expected_type.force(state.globals)) {
         (_, Value::Error) => {}
+
+        (
+            Term::FunctionTerm(_, output_term),
+            Value::FunctionType(_, input_type, output_closure),
+        ) => {
+            let input_term = state.push_local_param(input_type.clone());
+            let output_type = output_closure.elim(state.globals, input_term);
+            check_type(state, output_term, &output_type);
+            state.pop_local();
+        }
+        (Term::FunctionTerm(_, _), _) => {
+            state.report(Message::TooManyInputsInFunctionTerm);
+        }
+
+        (Term::RecordTerm(term_entries), Value::RecordType(closure)) => {
+            let mut missing_labels = Vec::new();
+
+            let mut pending_term_entries = term_entries.clone();
+
+            closure.entries(state.globals, |label, r#type| {
+                match pending_term_entries.remove(label) {
+                    Some(entry_term) => {
+                        check_type(state, &entry_term, &r#type);
+                        state.eval_term(&entry_term)
+                    }
+                    None => {
+                        missing_labels.push(label.to_owned());
+                        Arc::new(Value::Error)
+                    }
+                }
+            });
+
+            if !missing_labels.is_empty() && !pending_term_entries.is_empty() {
+                let unexpected_labels = (pending_term_entries.into_iter())
+                    .map(|(label, _)| label)
+                    .collect();
+                state.report(Message::InvalidRecordTerm {
+                    missing_labels,
+                    unexpected_labels,
+                });
+            }
+        }
+
         (Term::Sequence(entry_terms), Value::Stuck(Head::Global(name, _), spine)) => {
             match (name.as_ref(), spine.as_slice()) {
                 ("Array", [Elim::Function(len), Elim::Function(entry_type)]) => {
@@ -162,46 +205,7 @@ pub fn check_type(state: &mut State<'_>, term: &Term, expected_type: &Arc<Value>
         (Term::Sequence(_), _) => state.report(Message::NoSequenceConversion {
             expected_type: expected_type.clone(),
         }),
-        (Term::RecordTerm(term_entries), Value::RecordType(closure)) => {
-            let mut missing_labels = Vec::new();
 
-            let mut pending_term_entries = term_entries.clone();
-
-            closure.entries(state.globals, |label, r#type| {
-                match pending_term_entries.remove(label) {
-                    Some(entry_term) => {
-                        check_type(state, &entry_term, &r#type);
-                        state.eval_term(&entry_term)
-                    }
-                    None => {
-                        missing_labels.push(label.to_owned());
-                        Arc::new(Value::Error)
-                    }
-                }
-            });
-
-            if !missing_labels.is_empty() && !pending_term_entries.is_empty() {
-                let unexpected_labels = (pending_term_entries.into_iter())
-                    .map(|(label, _)| label)
-                    .collect();
-                state.report(Message::InvalidRecordTerm {
-                    missing_labels,
-                    unexpected_labels,
-                });
-            }
-        }
-        (
-            Term::FunctionTerm(_, output_term),
-            Value::FunctionType(_, input_type, output_closure),
-        ) => {
-            let input_term = state.push_local_param(input_type.clone());
-            let output_type = output_closure.elim(state.globals, input_term);
-            check_type(state, output_term, &output_type);
-            state.pop_local();
-        }
-        (Term::FunctionTerm(_, _), _) => {
-            state.report(Message::TooManyInputsInFunctionTerm);
-        }
         (term, _) => match synth_type(state, term) {
             found_type if state.is_subtype(&found_type, expected_type) => {}
             found_type => state.report(Message::MismatchedTypes {
@@ -215,13 +219,6 @@ pub fn check_type(state: &mut State<'_>, term: &Term, expected_type: &Arc<Value>
 /// Synthesize the type of a term.
 pub fn synth_type(state: &mut State<'_>, term: &Term) -> Arc<Value> {
     match term {
-        Term::Universe(level) => match *level + UniverseOffset(1) {
-            Some(level) => Arc::new(Value::universe(level)),
-            None => {
-                state.report(Message::MaximumUniverseLevelReached);
-                Arc::new(Value::Error)
-            }
-        },
         Term::Global(name) => match state.globals.get(name) {
             Some((r#type, _)) => state.eval_term(r#type),
             None => {
@@ -238,32 +235,74 @@ pub fn synth_type(state: &mut State<'_>, term: &Term) -> Arc<Value> {
                 Arc::new(Value::Error)
             }
         },
-        Term::Constant(constant) => Arc::new(match constant {
-            Constant::U8(_) => Value::global("U8", 0),
-            Constant::U16(_) => Value::global("U16", 0),
-            Constant::U32(_) => Value::global("U32", 0),
-            Constant::U64(_) => Value::global("U64", 0),
-            Constant::S8(_) => Value::global("S8", 0),
-            Constant::S16(_) => Value::global("S16", 0),
-            Constant::S32(_) => Value::global("S32", 0),
-            Constant::S64(_) => Value::global("S64", 0),
-            Constant::F32(_) => Value::global("F32", 0),
-            Constant::F64(_) => Value::global("F64", 0),
-            Constant::Char(_) => Value::global("Char", 0),
-            Constant::String(_) => Value::global("String", 0),
-        }),
-        Term::Sequence(_) => {
-            state.report(Message::AmbiguousTerm {
-                term: AmbiguousTerm::Sequence,
-            });
-            Arc::new(Value::Error)
-        }
+
         Term::Ann(term, r#type) => {
             is_type(state, r#type);
             let r#type = state.eval_term(r#type);
             check_type(state, term, &r#type);
             r#type
         }
+
+        Term::Universe(level) => match *level + UniverseOffset(1) {
+            Some(level) => Arc::new(Value::universe(level)),
+            None => {
+                state.report(Message::MaximumUniverseLevelReached);
+                Arc::new(Value::Error)
+            }
+        },
+        Term::Lift(term, offset) => match state.universe_offset + *offset {
+            Some(new_offset) => {
+                let previous_offset = std::mem::replace(&mut state.universe_offset, new_offset);
+                let r#type = synth_type(state, term);
+                state.universe_offset = previous_offset;
+                r#type
+            }
+            None => {
+                state.report(Message::MaximumUniverseLevelReached);
+                Arc::new(Value::Error)
+            }
+        },
+
+        Term::FunctionType(_, input_type, output_type) => {
+            let input_level = is_type(state, input_type);
+            let input_type = match input_level {
+                None => Arc::new(Value::Error),
+                Some(_) => state.eval_term(input_type),
+            };
+
+            state.push_local_param(input_type);
+            let output_level = is_type(state, output_type);
+            state.pop_local();
+
+            match (input_level, output_level) {
+                (Some(input_level), Some(output_level)) => {
+                    Arc::new(Value::Universe(std::cmp::max(input_level, output_level)))
+                }
+                (_, _) => Arc::new(Value::Error),
+            }
+        }
+        Term::FunctionTerm(_, _) => {
+            state.report(Message::AmbiguousTerm {
+                term: AmbiguousTerm::FunctionTerm,
+            });
+            Arc::new(Value::Error)
+        }
+        Term::FunctionElim(head_term, input_term) => {
+            let head_type = synth_type(state, head_term);
+            match head_type.force(state.globals) {
+                Value::FunctionType(_, input_type, output_closure) => {
+                    check_type(state, input_term, &input_type);
+                    let input_value = state.eval_term(input_term);
+                    output_closure.elim(state.globals, input_value)
+                }
+                Value::Error => Arc::new(Value::Error),
+                _ => {
+                    state.report(Message::TooManyInputsInFunctionElim { head_type });
+                    Arc::new(Value::Error)
+                }
+            }
+        }
+
         Term::RecordTerm(term_entries) => {
             if term_entries.is_empty() {
                 Arc::from(Value::RecordType(RecordTypeClosure::new(
@@ -329,57 +368,29 @@ pub fn synth_type(state: &mut State<'_>, term: &Term) -> Arc<Value> {
             });
             Arc::new(Value::Error)
         }
-        Term::FunctionType(_, input_type, output_type) => {
-            let input_level = is_type(state, input_type);
-            let input_type = match input_level {
-                None => Arc::new(Value::Error),
-                Some(_) => state.eval_term(input_type),
-            };
 
-            state.push_local_param(input_type);
-            let output_level = is_type(state, output_type);
-            state.pop_local();
-
-            match (input_level, output_level) {
-                (Some(input_level), Some(output_level)) => {
-                    Arc::new(Value::Universe(std::cmp::max(input_level, output_level)))
-                }
-                (_, _) => Arc::new(Value::Error),
-            }
-        }
-        Term::FunctionTerm(_, _) => {
+        Term::Sequence(_) => {
             state.report(Message::AmbiguousTerm {
-                term: AmbiguousTerm::FunctionTerm,
+                term: AmbiguousTerm::Sequence,
             });
             Arc::new(Value::Error)
         }
-        Term::FunctionElim(head_term, input_term) => {
-            let head_type = synth_type(state, head_term);
-            match head_type.force(state.globals) {
-                Value::FunctionType(_, input_type, output_closure) => {
-                    check_type(state, input_term, &input_type);
-                    let input_value = state.eval_term(input_term);
-                    output_closure.elim(state.globals, input_value)
-                }
-                Value::Error => Arc::new(Value::Error),
-                _ => {
-                    state.report(Message::TooManyInputsInFunctionElim { head_type });
-                    Arc::new(Value::Error)
-                }
-            }
-        }
-        Term::Lift(term, offset) => match state.universe_offset + *offset {
-            Some(new_offset) => {
-                let previous_offset = std::mem::replace(&mut state.universe_offset, new_offset);
-                let r#type = synth_type(state, term);
-                state.universe_offset = previous_offset;
-                r#type
-            }
-            None => {
-                state.report(Message::MaximumUniverseLevelReached);
-                Arc::new(Value::Error)
-            }
-        },
+
+        Term::Constant(constant) => Arc::new(match constant {
+            Constant::U8(_) => Value::global("U8", 0),
+            Constant::U16(_) => Value::global("U16", 0),
+            Constant::U32(_) => Value::global("U32", 0),
+            Constant::U64(_) => Value::global("U64", 0),
+            Constant::S8(_) => Value::global("S8", 0),
+            Constant::S16(_) => Value::global("S16", 0),
+            Constant::S32(_) => Value::global("S32", 0),
+            Constant::S64(_) => Value::global("S64", 0),
+            Constant::F32(_) => Value::global("F32", 0),
+            Constant::F64(_) => Value::global("F64", 0),
+            Constant::Char(_) => Value::global("Char", 0),
+            Constant::String(_) => Value::global("String", 0),
+        }),
+
         Term::Error => Arc::new(Value::Error),
     }
 }

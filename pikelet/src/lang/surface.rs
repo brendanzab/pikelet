@@ -34,20 +34,13 @@ pub type InputGroup<S> = (Vec<(Range<usize>, S)>, Term<S>);
 pub enum Term<S> {
     /// Names.
     Name(Range<usize>, S),
+
     /// Annotated terms.
     Ann(Box<Term<S>>, Box<Term<S>>),
-    /// Literals.
-    Literal(Range<usize>, Literal<S>),
-    /// Ordered sequences.
-    Sequence(Range<usize>, Vec<Term<S>>),
-    /// Record types.
-    RecordType(Range<usize>, Vec<TypeEntry<S>>),
-    /// Record terms.
-    RecordTerm(Range<usize>, Vec<TermEntry<S>>),
-    /// Record eliminations.
-    ///
-    /// Also known as: record projections, field lookup.
-    RecordElim(Box<Term<S>>, Range<usize>, S),
+
+    /// Lift a term by the given number of universe levels.
+    Lift(Range<usize>, Box<Term<S>>, u32),
+
     /// Function types.
     ///
     /// Also known as: pi type, dependent product type.
@@ -64,8 +57,22 @@ pub enum Term<S> {
     ///
     /// Also known as: function application.
     FunctionElim(Box<Term<S>>, Vec<Term<S>>),
-    /// Lift a term by the given number of universe levels.
-    Lift(Range<usize>, Box<Term<S>>, u32),
+
+    /// Record types.
+    RecordType(Range<usize>, Vec<TypeEntry<S>>),
+    /// Record terms.
+    RecordTerm(Range<usize>, Vec<TermEntry<S>>),
+    /// Record eliminations.
+    ///
+    /// Also known as: record projections, field lookup.
+    RecordElim(Box<Term<S>>, Range<usize>, S),
+
+    /// Ordered sequences.
+    Sequence(Range<usize>, Vec<Term<S>>),
+
+    /// Literals.
+    Literal(Range<usize>, Literal<S>),
+
     /// Error sentinel.
     Error(Range<usize>),
 }
@@ -86,14 +93,13 @@ impl<T> Term<T> {
     pub fn range(&self) -> Range<usize> {
         match self {
             Term::Name(range, _)
-            | Term::Literal(range, _)
-            | Term::Sequence(range, _)
+            | Term::Lift(range, _, _)
             | Term::RecordType(range, _)
             | Term::RecordTerm(range, _)
-            | Term::Lift(range, _, _)
+            | Term::Sequence(range, _)
+            | Term::Literal(range, _)
             | Term::Error(range) => range.clone(),
             Term::Ann(term, r#type) => term.range().start..r#type.range().end,
-            Term::RecordElim(term, label_range, _) => term.range().start..label_range.end,
             Term::FunctionType(range, _, output_type) => range.start..output_type.range().end,
             Term::FunctionArrowType(input_type, output_type) => {
                 input_type.range().start..output_type.range().end
@@ -103,6 +109,7 @@ impl<T> Term<T> {
                 Some(input_term) => head_term.range().start..input_term.range().end,
                 None => head_term.range(),
             },
+            Term::RecordElim(term, label_range, _) => term.range().start..label_range.end,
         }
     }
 }

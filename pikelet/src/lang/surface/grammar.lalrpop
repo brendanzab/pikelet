@@ -73,16 +73,16 @@ AppTerm: Term<&'input str> = {
 AtomicTerm: Term<&'input str> = {
     "(" <term: Term> ")" => term,
     <start: @L> <name: Name> <end: @R> => Term::Name(start..end, name),
-    <start: @L> <literal: Literal> <end: @R> => Term::Literal(start..end, literal),
-    <start: @L> "[" <entries: List<Term>> "]" <end: @R> => Term::Sequence(start..end, entries),
+    <start: @L> <term: AtomicTerm> <shift: "shift"> <end: @R> => {
+        Term::Lift(start..end, Box::new(term), shift[1..].parse().unwrap()) // FIXME: Overflow!
+    },
     <start: @L> "Record" "{" <entries: List<TypeEntry>> "}" <end: @R> => Term::RecordType(start..end, entries),
     <start: @L> "record" "{" <entries: List<TermEntry>> "}" <end: @R> => Term::RecordTerm(start..end, entries),
     <head_term: AtomicTerm> "." <label_start: @L> <label: Name> <end: @R> => {
         Term::RecordElim(Box::new(head_term), label_start..end, label)
     },
-    <start: @L> <term: AtomicTerm> <shift: "shift"> <end: @R> => {
-        Term::Lift(start..end, Box::new(term), shift[1..].parse().unwrap()) // FIXME: Overflow!
-    },
+    <start: @L> "[" <entries: List<Term>> "]" <end: @R> => Term::Sequence(start..end, entries),
+    <start: @L> <literal: Literal> <end: @R> => Term::Literal(start..end, literal),
 };
 
 List<Entry>: Vec<Entry> = {
