@@ -157,7 +157,7 @@ pub fn is_type<S: AsRef<str>>(
 ) -> (core::Term, Option<core::UniverseLevel>) {
     let (core_term, r#type) = synth_type(state, term);
     match r#type.force(state.globals) {
-        Value::Universe(level) => (core_term, Some(*level)),
+        Value::TypeType(level) => (core_term, Some(*level)),
         Value::Error => (core::Term::Error, None),
         found_type => {
             let found_type = state.read_back_value(&found_type);
@@ -491,7 +491,7 @@ pub fn synth_type<S: AsRef<str>>(
                             )
                         },
                     ),
-                    Arc::new(Value::Universe(max_level)),
+                    Arc::new(Value::TypeType(max_level)),
                 ),
             }
         }
@@ -513,7 +513,7 @@ pub fn synth_type<S: AsRef<str>>(
                         Arc::new(core_input_type),
                         Arc::new(core_output_type),
                     ),
-                    Arc::new(Value::Universe(std::cmp::max(input_level, output_level))),
+                    Arc::new(Value::TypeType(std::cmp::max(input_level, output_level))),
                 ),
                 (_, _) => (core::Term::Error, Arc::new(Value::Error)),
             }
@@ -622,7 +622,7 @@ pub fn synth_type<S: AsRef<str>>(
             state.pop_many_locals(seen_labels.len());
             (
                 core::Term::RecordType(core_type_entries.into()),
-                Arc::new(Value::Universe(max_level)),
+                Arc::new(Value::TypeType(max_level)),
             )
         }
         Term::RecordElim(head_term, label_range, label) => {

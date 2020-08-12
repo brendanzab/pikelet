@@ -120,7 +120,7 @@ pub fn from_term(state: &mut State<'_>, term: &Term) -> surface::Term<String> {
             Box::new(from_term(state, r#type)),
         ),
 
-        Term::Universe(level) => {
+        Term::TypeType(level) => {
             let universe0 = match state.globals.get("Type") {
                 Some(_) => surface::Term::Name(0..0, "Type".to_owned()),
                 None => surface::Term::Error(0..0), // TODO: Log error?

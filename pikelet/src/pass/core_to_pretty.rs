@@ -52,7 +52,7 @@ where
                 ),
         ),
 
-        Term::Universe(level) => (alloc.nil())
+        Term::TypeType(level) => (alloc.nil())
             .append("Type")
             .append("^")
             .append(alloc.as_string(level.0)),

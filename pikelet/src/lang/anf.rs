@@ -32,7 +32,7 @@ pub enum Value {
     Ann(Box<Value>, Box<Configuration>),
 
     /// The type of types.
-    Universe(UniverseLevel),
+    TypeType(UniverseLevel),
     /// Lift a value by the given number of universe levels.
     Lift(Box<Value>, UniverseOffset),
 

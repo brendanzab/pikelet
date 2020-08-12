@@ -116,7 +116,7 @@ impl<'me> State<'me> {
 pub fn is_type(state: &mut State<'_>, term: &Term) -> Option<UniverseLevel> {
     let r#type = synth_type(state, term);
     match r#type.force(state.globals) {
-        Value::Universe(level) => Some(*level),
+        Value::TypeType(level) => Some(*level),
         Value::Error => None,
         _ => {
             state.report(Message::MismatchedTypes {
@@ -243,8 +243,8 @@ pub fn synth_type(state: &mut State<'_>, term: &Term) -> Arc<Value> {
             r#type
         }
 
-        Term::Universe(level) => match *level + UniverseOffset(1) {
-            Some(level) => Arc::new(Value::universe(level)),
+        Term::TypeType(level) => match *level + UniverseOffset(1) {
+            Some(level) => Arc::new(Value::type_type(level)),
             None => {
                 state.report(Message::MaximumUniverseLevelReached);
                 Arc::new(Value::Error)
@@ -276,7 +276,7 @@ pub fn synth_type(state: &mut State<'_>, term: &Term) -> Arc<Value> {
 
             match (input_level, output_level) {
                 (Some(input_level), Some(output_level)) => {
-                    Arc::new(Value::Universe(std::cmp::max(input_level, output_level)))
+                    Arc::new(Value::TypeType(std::cmp::max(input_level, output_level)))
                 }
                 (_, _) => Arc::new(Value::Error),
             }
@@ -345,7 +345,7 @@ pub fn synth_type(state: &mut State<'_>, term: &Term) -> Arc<Value> {
                 state.report(Message::InvalidRecordType { duplicate_labels });
             }
 
-            Arc::new(Value::Universe(max_level))
+            Arc::new(Value::TypeType(max_level))
         }
         Term::RecordElim(head_term, label) => {
             let head_type = synth_type(state, head_term);

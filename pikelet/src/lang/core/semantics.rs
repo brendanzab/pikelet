@@ -41,7 +41,7 @@ pub enum Value {
     Unstuck(Head, Vec<Elim>, Arc<LazyValue>),
 
     /// The type of types.
-    Universe(UniverseLevel),
+    TypeType(UniverseLevel),
 
     /// Function types.
     ///
@@ -68,9 +68,9 @@ pub enum Value {
 }
 
 impl Value {
-    /// Create a universe at the given level.
-    pub fn universe(level: impl Into<UniverseLevel>) -> Value {
-        Value::Universe(level.into())
+    /// Create a type of types at the given level.
+    pub fn type_type(level: impl Into<UniverseLevel>) -> Value {
+        Value::TypeType(level.into())
     }
 
     /// Create a global variable.
@@ -286,7 +286,7 @@ pub fn eval_term(
 
         Term::Ann(term, _) => eval_term(globals, universe_offset, values, term),
 
-        Term::Universe(level) => Arc::new(Value::universe(
+        Term::TypeType(level) => Arc::new(Value::type_type(
             (*level + universe_offset).unwrap(), // FIXME: Handle overflow
         )),
         Term::Lift(term, offset) => {
@@ -458,7 +458,7 @@ pub fn read_back_value(
             Unfold::All => read_back_value(globals, local_size, unfold, value.force(globals)),
         },
 
-        Value::Universe(level) => Term::Universe(*level),
+        Value::TypeType(level) => Term::TypeType(*level),
 
         Value::FunctionType(input_name_hint, input_type, output_closure) => {
             let local = Arc::new(Value::local(local_size.next_level()));
@@ -575,7 +575,7 @@ fn is_equal(globals: &Globals, local_size: LocalSize, value0: &Value, value1: &V
             is_equal(globals, local_size, value0, value1.force(globals))
         }
 
-        (Value::Universe(level0), Value::Universe(level1)) => level0 == level1,
+        (Value::TypeType(level0), Value::TypeType(level1)) => level0 == level1,
 
         (
             Value::FunctionType(_, input_type0, output_closure0),
@@ -697,7 +697,7 @@ pub fn is_subtype(
             is_subtype(globals, local_size, value0, value1.force(globals))
         }
 
-        (Value::Universe(level0), Value::Universe(level1)) => level0 <= level1,
+        (Value::TypeType(level0), Value::TypeType(level1)) => level0 <= level1,
 
         (
             Value::FunctionType(_, input_type0, output_closure0),

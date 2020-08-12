@@ -92,7 +92,7 @@ fn view_term<M: 'static>(term: &pikelet::lang::core::Term) -> Element<M> {
     use pikelet::lang::core::{Constant, Term, UniverseLevel, UniverseOffset};
 
     match term {
-        Term::Universe(UniverseLevel(level)) => Row::new()
+        Term::TypeType(UniverseLevel(level)) => Row::new()
             .push(Text::new(format!("Univ^{}", level))) // TODO: superscript?
             .into(),
         Term::Global(name) => Text::new(name).into(),

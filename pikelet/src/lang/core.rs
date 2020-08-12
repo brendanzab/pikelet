@@ -76,7 +76,7 @@ pub enum Term {
     Ann(Arc<Term>, Arc<Term>),
 
     /// The type of types.
-    Universe(UniverseLevel),
+    TypeType(UniverseLevel),
     /// Lift a term by the given number of universe levels.
     Lift(Arc<Term>, UniverseOffset),
 
@@ -113,9 +113,9 @@ pub enum Term {
 }
 
 impl Term {
-    /// Create a universe at the given level.
-    pub fn universe(level: impl Into<UniverseLevel>) -> Term {
-        Term::Universe(level.into())
+    /// Create a type of types at the given level.
+    pub fn type_type(level: impl Into<UniverseLevel>) -> Term {
+        Term::TypeType(level.into())
     }
 
     /// Create a global variable.
@@ -158,8 +158,8 @@ impl Default for Globals {
         entries.insert(
             "Type".to_owned(),
             (
-                Arc::new(Term::universe(1)),
-                Some(Arc::new(Term::universe(0))),
+                Arc::new(Term::type_type(1)),
+                Some(Arc::new(Term::type_type(0))),
             ),
         );
         entries.insert("Bool".to_owned(), (Arc::new(Term::global("Type")), None));
@@ -185,8 +185,8 @@ impl Default for Globals {
                     Arc::new(Term::Global("U32".to_owned())),
                     Arc::new(Term::FunctionType(
                         None,
-                        Arc::new(Term::universe(0)),
-                        Arc::new(Term::universe(0)),
+                        Arc::new(Term::type_type(0)),
+                        Arc::new(Term::type_type(0)),
                     )),
                 )),
                 None,
@@ -197,8 +197,8 @@ impl Default for Globals {
             (
                 Arc::new(Term::FunctionType(
                     None,
-                    Arc::new(Term::universe(0)),
-                    Arc::new(Term::universe(0)),
+                    Arc::new(Term::type_type(0)),
+                    Arc::new(Term::type_type(0)),
                 )),
                 None,
             ),
