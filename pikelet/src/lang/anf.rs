@@ -78,3 +78,24 @@ pub struct Configuration {
     /// The final output of the program.
     pub output: Computation,
 }
+
+/// A program with a 'hole'.
+pub enum Continuation {
+    Nil,
+    BindHole(Configuration),
+}
+
+impl Continuation {
+    pub fn compose(self, computation: Computation) -> Configuration {
+        match self {
+            Continuation::Nil => Configuration {
+                bindings: Vec::new(),
+                output: computation,
+            },
+            Continuation::BindHole(mut configuration) => {
+                configuration.bindings.insert(0, computation);
+                configuration
+            }
+        }
+    }
+}
