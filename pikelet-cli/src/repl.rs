@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::sync::Arc;
 
 const HISTORY_FILE_NAME: &str = "history";
@@ -47,7 +46,7 @@ fn term_width() -> usize {
 }
 
 /// Run the REPL with the given options.
-pub fn run(options: Options) -> Result<(), Box<dyn Error>> {
+pub fn run(options: Options) -> anyhow::Result<()> {
     use codespan_reporting::files::SimpleFile;
     use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
     use pikelet::lang::{core, surface};

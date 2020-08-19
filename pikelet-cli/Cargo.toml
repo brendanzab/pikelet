@@ -20,6 +20,7 @@ editor = ["pikelet-editor"]
 language-server = ["pikelet-language-server"]
 
 [dependencies]
+anyhow = "1.0"
 codespan-reporting = "0.9.5"
 pikelet = { path = "../pikelet" }
 pikelet-editor = { path = "../pikelet-editor", optional = true }

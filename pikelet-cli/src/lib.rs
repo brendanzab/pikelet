@@ -1,4 +1,4 @@
-use std::error::Error;
+use anyhow::anyhow;
 
 pub mod repl;
 
@@ -23,14 +23,11 @@ pub enum Options {
 }
 
 /// Run the CLI with the given options
-pub fn run(options: Options) -> Result<(), Box<dyn Error>> {
+pub fn run(options: Options) -> anyhow::Result<()> {
     match options {
-        Options::Check => Err("not yet implemented".into()),
+        Options::Check => Err(anyhow!("not yet implemented")),
         #[cfg(feature = "editor")]
-        Options::Editor => {
-            pikelet_editor::run();
-            Ok(())
-        }
+        Options::Editor => Ok(pikelet_editor::run()),
         #[cfg(feature = "language-server")]
         Options::LanguageServer => pikelet_language_server::run(),
         Options::Repl(options) => repl::run(options),
