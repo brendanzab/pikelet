@@ -25,11 +25,13 @@ pub enum Options {
 /// Run the CLI with the given options
 pub fn run(options: Options) -> anyhow::Result<()> {
     match options {
-        Options::Check => Err(anyhow!("not yet implemented")),
+        Options::Check => return Err(anyhow!("not yet implemented")),
         #[cfg(feature = "editor")]
-        Options::Editor => Ok(pikelet_editor::run()),
+        Options::Editor => pikelet_editor::run(),
         #[cfg(feature = "language-server")]
-        Options::LanguageServer => pikelet_language_server::run(),
-        Options::Repl(options) => repl::run(options),
+        Options::LanguageServer => pikelet_language_server::run()?,
+        Options::Repl(options) => repl::run(options)?,
     }
+
+    Ok(())
 }
