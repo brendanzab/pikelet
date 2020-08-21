@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        rust: ["1.42.0", "stable", "beta", "nightly"]
+        rust: ["1.43.0", "stable", "beta", "nightly"]
     name: Check (${{ matrix.rust }})
     steps:
       - uses: actions/checkout@v2
@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        rust: ["1.42.0", "stable", "beta", "nightly"]
+        rust: ["1.43.0", "stable", "beta", "nightly"]
     name: Test Suite (${{ matrix.rust }})
     steps:
       - uses: actions/checkout@v2
@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        rust: ["1.42.0", "stable", "beta", "nightly"]
+        rust: ["1.43.0", "stable", "beta", "nightly"]
     name: Rustfmt (${{ matrix.rust }})
     steps:
       - uses: actions/checkout@v2
@@ -76,7 +76,7 @@ jobs:
     strategy:
       matrix:
         rust: ["stable"]
-        # rust: ["1.42.0", "stable", "beta", "nightly"]
+        # rust: ["1.43.0", "stable", "beta", "nightly"]
     name: Clippy (${{ matrix.rust }})
     steps:
       - uses: actions/checkout@v2
