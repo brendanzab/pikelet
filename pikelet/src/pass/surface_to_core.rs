@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::lang::core;
 use crate::lang::core::semantics::{self, Elim, Head, RecordTypeClosure, Unfold, Value};
-use crate::lang::surface::{Literal, Term};
+use crate::lang::surface::{Literal, Term, TermData};
 use crate::pass::core_to_surface;
 
 pub mod reporting;
@@ -178,19 +178,19 @@ pub fn check_type<S: AsRef<str>>(
     term: &Term<S>,
     expected_type: &Arc<Value>,
 ) -> core::Term {
-    match (term, expected_type.force(state.globals)) {
+    match (&term.data, expected_type.force(state.globals)) {
         (_, Value::Error) => core::Term::Error,
 
-        (Term::FunctionTerm(_, input_names, output_term), _) => {
+        (TermData::FunctionTerm(input_names, output_term), _) => {
             let mut seen_input_count = 0;
             let mut expected_type = expected_type.clone();
             let mut pending_input_names = input_names.iter();
 
-            while let Some((input_range, input_name)) = pending_input_names.next() {
+            while let Some(input_name) = pending_input_names.next() {
                 match expected_type.force(state.globals) {
                     Value::FunctionType(_, input_type, output_closure) => {
-                        let input_value =
-                            state.push_local_param(Some(input_name.as_ref()), input_type.clone());
+                        let input_value = state
+                            .push_local_param(Some(input_name.data.as_ref()), input_type.clone());
                         seen_input_count += 1;
                         expected_type = output_closure.elim(state.globals, input_value);
                     }
@@ -200,8 +200,8 @@ pub fn check_type<S: AsRef<str>>(
                     }
                     _ => {
                         state.report(Message::TooManyInputsInFunctionTerm {
-                            unexpected_inputs: std::iter::once(input_range.clone())
-                                .chain(pending_input_names.map(|(range, _)| range.clone()))
+                            unexpected_inputs: std::iter::once(input_name.range())
+                                .chain(pending_input_names.map(|input_name| input_name.range()))
                                 .collect(),
                         });
                         check_type(state, output_term, &expected_type);
@@ -213,18 +213,15 @@ pub fn check_type<S: AsRef<str>>(
 
             let core_output_term = check_type(state, output_term, &expected_type);
             state.pop_many_locals(seen_input_count);
-            (input_names.iter().rev()).fold(
-                core_output_term,
-                |core_output_term, (_, input_name)| {
-                    core::Term::FunctionTerm(
-                        input_name.as_ref().to_owned(),
-                        Arc::new(core_output_term),
-                    )
-                },
-            )
+            (input_names.iter().rev()).fold(core_output_term, |core_output_term, input_name| {
+                core::Term::FunctionTerm(
+                    input_name.data.as_ref().to_owned(),
+                    Arc::new(core_output_term),
+                )
+            })
         }
 
-        (Term::RecordTerm(_, term_entries), Value::RecordType(closure)) => {
+        (TermData::RecordTerm(term_entries), Value::RecordType(closure)) => {
             use std::collections::btree_map::Entry;
             use std::collections::BTreeMap;
 
@@ -233,9 +230,9 @@ pub fn check_type<S: AsRef<str>>(
 
             let mut core_term_entries = BTreeMap::new();
             let mut pending_term_entries = BTreeMap::new();
-            for (label_range, label, entry_term) in term_entries {
-                let range = label_range.clone();
-                match pending_term_entries.entry(label.as_ref().to_owned()) {
+            for (label, entry_term) in term_entries {
+                let range = label.range();
+                match pending_term_entries.entry(label.data.as_ref().to_owned()) {
                     Entry::Vacant(entry) => drop(entry.insert((range, entry_term))),
                     Entry::Occupied(entry) => {
                         duplicate_labels.push((entry.key().clone(), entry.get().0.clone(), range));
@@ -277,7 +274,7 @@ pub fn check_type<S: AsRef<str>>(
             core::Term::RecordTerm(core_term_entries)
         }
 
-        (Term::Sequence(_, entry_terms), Value::Stuck(Head::Global(name, _), spine)) => {
+        (TermData::Sequence(entry_terms), Value::Stuck(Head::Global(name, _), spine)) => {
             match (name.as_ref(), spine.as_slice()) {
                 ("Array", [Elim::Function(len), Elim::Function(core_entry_type)]) => {
                     let core_entry_terms = entry_terms
@@ -337,7 +334,7 @@ pub fn check_type<S: AsRef<str>>(
                 }
             }
         }
-        (Term::Sequence(_, _), _) => {
+        (TermData::Sequence(_), _) => {
             let expected_type = state.read_back_value(expected_type);
             let expected_type = state.core_to_surface_term(&expected_type);
             state.report(Message::NoSequenceConversion {
@@ -347,7 +344,7 @@ pub fn check_type<S: AsRef<str>>(
             core::Term::Error
         }
 
-        (Term::Literal(_, literal), Value::Stuck(Head::Global(name, _), spine)) => {
+        (TermData::Literal(literal), Value::Stuck(Head::Global(name, _), spine)) => {
             use crate::lang::core::Constant::*;
 
             match (literal, name.as_ref(), spine.as_slice()) {
@@ -374,7 +371,7 @@ pub fn check_type<S: AsRef<str>>(
                 }
             }
         }
-        (Term::Literal(_, _), _) => {
+        (TermData::Literal(_), _) => {
             let expected_type = state.read_back_value(expected_type);
             let expected_type = state.core_to_surface_term(&expected_type);
             state.report(Message::NoLiteralConversion {
@@ -384,7 +381,7 @@ pub fn check_type<S: AsRef<str>>(
             core::Term::Error
         }
 
-        (term, _) => match synth_type(state, term) {
+        (_, _) => match synth_type(state, term) {
             (term, found_type) if state.is_subtype(&found_type, expected_type) => term,
             (_, found_type) => {
                 let found_type = state.read_back_value(&found_type);
@@ -409,8 +406,8 @@ pub fn synth_type<S: AsRef<str>>(
 ) -> (core::Term, Arc<Value>) {
     use std::collections::BTreeMap;
 
-    match term {
-        Term::Name(_, name) => {
+    match &term.data {
+        TermData::Name(name) => {
             if let Some((index, r#type)) = state.get_local(name.as_ref()) {
                 return (core::Term::Local(index), r#type.clone());
             }
@@ -427,7 +424,7 @@ pub fn synth_type<S: AsRef<str>>(
             (core::Term::Error, Arc::new(Value::Error))
         }
 
-        Term::Ann(term, r#type) => {
+        TermData::Ann(term, r#type) => {
             let (core_type, _) = is_type(state, r#type);
             let core_type_value = state.eval_term(&core_type);
             let core_term = check_type(state, term, &core_type_value);
@@ -437,7 +434,7 @@ pub fn synth_type<S: AsRef<str>>(
             )
         }
 
-        Term::Lift(_, inner_term, offset) => {
+        TermData::Lift(inner_term, offset) => {
             match state.universe_offset + core::UniverseOffset(*offset) {
                 Some(new_offset) => {
                     let previous_offset = std::mem::replace(&mut state.universe_offset, new_offset);
@@ -454,7 +451,7 @@ pub fn synth_type<S: AsRef<str>>(
             }
         }
 
-        Term::FunctionType(_, input_type_groups, output_type) => {
+        TermData::FunctionType(input_type_groups, output_type) => {
             let mut max_level = Some(core::UniverseLevel(0));
             let update_level = |max_level, next_level| match (max_level, next_level) {
                 (Some(max_level), Some(pl)) => Some(std::cmp::max(max_level, pl)),
@@ -463,13 +460,13 @@ pub fn synth_type<S: AsRef<str>>(
             let mut core_inputs = Vec::new();
 
             for (input_names, input_type) in input_type_groups {
-                for (_, input_name) in input_names {
+                for input_name in input_names {
                     let (core_input_type, input_level) = is_type(state, input_type);
                     max_level = update_level(max_level, input_level);
 
                     let core_input_type_value = state.eval_term(&core_input_type);
-                    state.push_local_param(Some(input_name.as_ref()), core_input_type_value);
-                    core_inputs.push((Some(input_name.as_ref().to_owned()), core_input_type));
+                    state.push_local_param(Some(input_name.data.as_ref()), core_input_type_value);
+                    core_inputs.push((Some(input_name.data.as_ref().to_owned()), core_input_type));
                 }
             }
 
@@ -495,7 +492,7 @@ pub fn synth_type<S: AsRef<str>>(
                 ),
             }
         }
-        Term::FunctionArrowType(input_type, output_type) => {
+        TermData::FunctionArrowType(input_type, output_type) => {
             let (core_input_type, input_level) = is_type(state, input_type);
             let core_input_type_value = match input_level {
                 None => Arc::new(Value::Error),
@@ -518,14 +515,14 @@ pub fn synth_type<S: AsRef<str>>(
                 (_, _) => (core::Term::Error, Arc::new(Value::Error)),
             }
         }
-        Term::FunctionTerm(_, _, _) => {
+        TermData::FunctionTerm(_, _) => {
             state.report(Message::AmbiguousTerm {
                 range: term.range(),
                 term: AmbiguousTerm::FunctionTerm,
             });
             (core::Term::Error, Arc::new(Value::Error))
         }
-        Term::FunctionElim(head_term, input_terms) => {
+        TermData::FunctionElim(head_term, input_terms) => {
             let mut head_range = head_term.range();
             let (mut core_head_term, mut head_type) = synth_type(state, head_term);
             let mut input_terms = input_terms.iter();
@@ -560,7 +557,7 @@ pub fn synth_type<S: AsRef<str>>(
             (core_head_term, head_type)
         }
 
-        Term::RecordTerm(_, term_entries) => {
+        TermData::RecordTerm(term_entries) => {
             if term_entries.is_empty() {
                 (
                     core::Term::RecordTerm(BTreeMap::new()),
@@ -578,7 +575,7 @@ pub fn synth_type<S: AsRef<str>>(
                 (core::Term::Error, Arc::new(Value::Error))
             }
         }
-        Term::RecordType(_, type_entries) => {
+        TermData::RecordType(type_entries) => {
             use std::collections::btree_map::Entry;
 
             let mut max_level = core::UniverseLevel(0);
@@ -586,9 +583,9 @@ pub fn synth_type<S: AsRef<str>>(
             let mut seen_labels = BTreeMap::new();
             let mut core_type_entries = Vec::new();
 
-            for (label_range, label, name, entry_type) in type_entries {
+            for (label, name, entry_type) in type_entries {
                 let name = name.as_ref().unwrap_or(label);
-                match seen_labels.entry(label.as_ref()) {
+                match seen_labels.entry(label.data.as_ref()) {
                     Entry::Vacant(entry) => {
                         let (core_type, level) = is_type(state, entry_type);
                         max_level = match level {
@@ -600,15 +597,15 @@ pub fn synth_type<S: AsRef<str>>(
                         };
                         let core_type = Arc::new(core_type);
                         let core_type_value = state.eval_term(&core_type);
-                        core_type_entries.push((label.as_ref().to_owned(), core_type));
-                        state.push_local_param(Some(name.as_ref()), core_type_value);
-                        entry.insert(label_range.clone());
+                        core_type_entries.push((label.data.as_ref().to_owned(), core_type));
+                        state.push_local_param(Some(name.data.as_ref()), core_type_value);
+                        entry.insert(label.range());
                     }
                     Entry::Occupied(entry) => {
                         duplicate_labels.push((
                             (*entry.key()).to_owned(),
                             entry.get().clone(),
-                            label_range.clone(),
+                            label.range(),
                         ));
                         is_type(state, entry_type);
                     }
@@ -625,13 +622,13 @@ pub fn synth_type<S: AsRef<str>>(
                 Arc::new(Value::TypeType(max_level)),
             )
         }
-        Term::RecordElim(head_term, label_range, label) => {
+        TermData::RecordElim(head_term, label) => {
             let (core_head_term, head_type) = synth_type(state, head_term);
 
             match head_type.force(state.globals) {
                 Value::RecordType(closure) => {
                     let head_value = state.eval_term(&core_head_term);
-                    let label = label.as_ref();
+                    let label = label.data.as_ref();
 
                     if let Some(entry_type) = state.record_elim_type(&head_value, label, closure) {
                         let core_head_term = Arc::new(core_head_term);
@@ -647,14 +644,14 @@ pub fn synth_type<S: AsRef<str>>(
             let head_type = state.core_to_surface_term(&head_type);
             state.report(Message::LabelNotFound {
                 head_range: head_term.range(),
-                label_range: label_range.clone(),
-                expected_label: label.as_ref().to_owned(),
+                label_range: label.range(),
+                expected_label: label.data.as_ref().to_owned(),
                 head_type,
             });
             (core::Term::Error, Arc::new(Value::Error))
         }
 
-        Term::Sequence(_, _) => {
+        TermData::Sequence(_) => {
             state.report(Message::AmbiguousTerm {
                 range: term.range(),
                 term: AmbiguousTerm::Sequence,
@@ -662,7 +659,7 @@ pub fn synth_type<S: AsRef<str>>(
             (core::Term::Error, Arc::new(Value::Error))
         }
 
-        Term::Literal(_, literal) => match literal {
+        TermData::Literal(literal) => match literal {
             Literal::Number(_) => {
                 state.report(Message::AmbiguousTerm {
                     range: term.range(),
@@ -680,7 +677,7 @@ pub fn synth_type<S: AsRef<str>>(
             ),
         },
 
-        Term::Error(_) => (core::Term::Error, Arc::new(Value::Error)),
+        TermData::Error => (core::Term::Error, Arc::new(Value::Error)),
     }
 }
 

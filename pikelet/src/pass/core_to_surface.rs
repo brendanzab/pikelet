@@ -1,11 +1,10 @@
 //! Distill the core language into the surface language.
 
-#![allow(clippy::reversed_empty_ranges)]
-
 use std::collections::HashMap;
 
 use crate::lang::core::{Constant, Globals, Locals, Term, UniverseLevel, UniverseOffset};
 use crate::lang::surface;
+use crate::lang::Ranged;
 
 pub struct State<'me> {
     globals: &'me Globals,
@@ -105,43 +104,44 @@ impl<'me> State<'me> {
 }
 
 pub fn from_term(state: &mut State<'_>, term: &Term) -> surface::Term<String> {
-    match term {
+    let term_data = match term {
         Term::Global(name) => match state.globals.get(name) {
-            Some(_) => surface::Term::Name(0..0, name.to_owned()),
-            None => surface::Term::Error(0..0), // TODO: Log error?
+            Some(_) => surface::TermData::Name(name.to_owned()),
+            None => surface::TermData::Error, // TODO: Log error?
         },
         Term::Local(index) => match state.names.get(*index) {
-            Some(name) => surface::Term::Name(0..0, name.clone()),
-            None => surface::Term::Error(0..0), // TODO: Log error?
+            Some(name) => surface::TermData::Name(name.clone()),
+            None => surface::TermData::Error, // TODO: Log error?
         },
 
-        Term::Ann(term, r#type) => surface::Term::Ann(
+        Term::Ann(term, r#type) => surface::TermData::Ann(
             Box::new(from_term(state, term)),
             Box::new(from_term(state, r#type)),
         ),
 
         Term::TypeType(level) => {
             let universe0 = match state.globals.get("Type") {
-                Some(_) => surface::Term::Name(0..0, "Type".to_owned()),
-                None => surface::Term::Error(0..0), // TODO: Log error?
+                Some(_) => surface::TermData::Name("Type".to_owned()),
+                None => surface::TermData::Error, // TODO: Log error?
             };
             match level {
                 UniverseLevel(0) => universe0,
-                UniverseLevel(level) => surface::Term::Lift(0..0, Box::new(universe0), *level),
+                UniverseLevel(level) => {
+                    surface::TermData::Lift(Box::new(Ranged::from(universe0)), *level)
+                }
             }
         }
         Term::Lift(term, UniverseOffset(offset)) => {
-            surface::Term::Lift(0..0, Box::new(from_term(state, term)), *offset)
+            surface::TermData::Lift(Box::new(from_term(state, term)), *offset)
         }
 
         Term::FunctionType(input_name_hint, input_type, output_type) => {
             // FIXME: properly group inputs!
             let input_type = from_term(state, input_type);
             let fresh_input_name = state.push_name(input_name_hint.as_ref().map(String::as_ref));
-            let input_type_groups = vec![(vec![(0..0, fresh_input_name)], input_type)];
+            let input_type_groups = vec![(vec![Ranged::from(fresh_input_name)], input_type)];
 
-            surface::Term::FunctionType(
-                0..,
+            surface::TermData::FunctionType(
                 input_type_groups,
                 Box::new(from_term(state, output_type)),
             )
@@ -150,20 +150,20 @@ pub fn from_term(state: &mut State<'_>, term: &Term) -> surface::Term<String> {
             let mut current_output_term = output_term;
 
             let fresh_input_name = state.push_name(Some(input_name_hint));
-            let mut input_names = vec![(0..0, fresh_input_name)];
+            let mut input_names = vec![Ranged::from(fresh_input_name)];
 
             while let Term::FunctionTerm(input_name_hint, output_term) =
                 current_output_term.as_ref()
             {
                 let fresh_input_name = state.push_name(Some(input_name_hint));
-                input_names.push((0..0, fresh_input_name));
+                input_names.push(Ranged::from(fresh_input_name));
                 current_output_term = output_term;
             }
 
             let output_term = from_term(state, current_output_term);
             state.pop_many_names(input_names.len());
 
-            surface::Term::FunctionTerm(0.., input_names, Box::new(output_term))
+            surface::TermData::FunctionTerm(input_names, Box::new(output_term))
         }
         Term::FunctionElim(head_term, input_term) => {
             let mut current_head_term = head_term;
@@ -176,7 +176,7 @@ pub fn from_term(state: &mut State<'_>, term: &Term) -> surface::Term<String> {
             input_terms.reverse();
 
             let head_term = from_term(state, current_head_term);
-            surface::Term::FunctionElim(Box::new(head_term), input_terms)
+            surface::TermData::FunctionElim(Box::new(head_term), input_terms)
         }
 
         Term::RecordType(type_entries) => {
@@ -184,29 +184,32 @@ pub fn from_term(state: &mut State<'_>, term: &Term) -> surface::Term<String> {
                 .iter()
                 .map(|(label, r#type)| {
                     let r#type = from_term(state, r#type);
-                    match state.push_name(Some(label)) {
-                        name if name == *label => (0..0, label.clone(), None, r#type),
-                        name => (0..0, label.clone(), Some(name), r#type),
+                    let label = label.clone();
+                    match state.push_name(Some(&label)) {
+                        name if name == label => (Ranged::from(label), None, r#type),
+                        name => (Ranged::from(label), Some(Ranged::from(name)), r#type),
                     }
                 })
                 .collect();
 
-            surface::Term::RecordType(0..0, core_type_entries)
+            surface::TermData::RecordType(core_type_entries)
         }
         Term::RecordTerm(term_entries) => {
             let core_term_entries = term_entries
                 .iter()
                 .map(|(entry_name, entry_term)| {
-                    (0..0, entry_name.clone(), from_term(state, entry_term))
+                    let entry_name = entry_name.clone();
+                    (Ranged::from(entry_name), from_term(state, entry_term))
                 })
                 .collect();
             state.pop_many_names(term_entries.len());
 
-            surface::Term::RecordTerm(0..0, core_term_entries)
+            surface::TermData::RecordTerm(core_term_entries)
         }
-        Term::RecordElim(head_term, label) => {
-            surface::Term::RecordElim(Box::new(from_term(state, head_term)), 0..0, label.clone())
-        }
+        Term::RecordElim(head_term, label) => surface::TermData::RecordElim(
+            Box::new(from_term(state, head_term)),
+            Ranged::from(label.clone()),
+        ),
 
         Term::Sequence(entry_terms) => {
             let core_entry_terms = entry_terms
@@ -214,31 +217,33 @@ pub fn from_term(state: &mut State<'_>, term: &Term) -> surface::Term<String> {
                 .map(|entry_term| from_term(state, entry_term))
                 .collect();
 
-            surface::Term::Sequence(0..0, core_entry_terms)
+            surface::TermData::Sequence(core_entry_terms)
         }
 
-        Term::Constant(constant) => delaborate_constant(constant),
+        Term::Constant(constant) => from_constant(constant),
 
-        Term::Error => surface::Term::Error(0..0),
-    }
+        Term::Error => surface::TermData::Error,
+    };
+
+    surface::Term::from(term_data)
 }
 
-pub fn delaborate_constant(constant: &Constant) -> surface::Term<String> {
+pub fn from_constant(constant: &Constant) -> surface::TermData<String> {
     use crate::lang::surface::Literal::{Char, Number, String};
 
     match constant {
-        Constant::U8(value) => surface::Term::Literal(0..0, Number(value.to_string())),
-        Constant::U16(value) => surface::Term::Literal(0..0, Number(value.to_string())),
-        Constant::U32(value) => surface::Term::Literal(0..0, Number(value.to_string())),
-        Constant::U64(value) => surface::Term::Literal(0..0, Number(value.to_string())),
-        Constant::S8(value) => surface::Term::Literal(0..0, Number(value.to_string())),
-        Constant::S16(value) => surface::Term::Literal(0..0, Number(value.to_string())),
-        Constant::S32(value) => surface::Term::Literal(0..0, Number(value.to_string())),
-        Constant::S64(value) => surface::Term::Literal(0..0, Number(value.to_string())),
-        Constant::F32(value) => surface::Term::Literal(0..0, Number(value.to_string())),
-        Constant::F64(value) => surface::Term::Literal(0..0, Number(value.to_string())),
-        Constant::Char(value) => surface::Term::Literal(0..0, Char(format!("{:?}", value))),
-        Constant::String(value) => surface::Term::Literal(0..0, String(format!("{:?}", value))),
+        Constant::U8(value) => surface::TermData::Literal(Number(value.to_string())),
+        Constant::U16(value) => surface::TermData::Literal(Number(value.to_string())),
+        Constant::U32(value) => surface::TermData::Literal(Number(value.to_string())),
+        Constant::U64(value) => surface::TermData::Literal(Number(value.to_string())),
+        Constant::S8(value) => surface::TermData::Literal(Number(value.to_string())),
+        Constant::S16(value) => surface::TermData::Literal(Number(value.to_string())),
+        Constant::S32(value) => surface::TermData::Literal(Number(value.to_string())),
+        Constant::S64(value) => surface::TermData::Literal(Number(value.to_string())),
+        Constant::F32(value) => surface::TermData::Literal(Number(value.to_string())),
+        Constant::F64(value) => surface::TermData::Literal(Number(value.to_string())),
+        Constant::Char(value) => surface::TermData::Literal(Char(format!("{:?}", value))),
+        Constant::String(value) => surface::TermData::Literal(String(format!("{:?}", value))),
     }
 }
 

@@ -1,6 +1,5 @@
-use std::ops::Range;
-
-use crate::lang::surface::{Term, Literal, TypeEntry, TermEntry};
+use crate::lang::Ranged;
+use crate::lang::surface::{Term, TermData, Literal, TypeEntry, TermEntry};
 use crate::lang::surface::lexer::{LexerError, Token};
 
 grammar<'input>;
@@ -39,50 +38,54 @@ extern {
     }
 }
 
-pub Term: Term<&'input str> = {
-    ExprTerm,
-    <term: ExprTerm> ":" <ty: Term> => Term::Ann(Box::new(term), Box::new(ty)),
+pub Term: Term<&'input str> = Ranged<TermData>;
+ArrowTerm: Term<&'input str> = Ranged<ArrowTermData>;
+ExprTerm: Term<&'input str> = Ranged<ExprTermData>;
+AppTerm: Term<&'input str> = Ranged<AppTermData>;
+AtomicTerm: Term<&'input str> = Ranged<AtomicTermData>;
+
+TermData: TermData<&'input str> = {
+    ExprTermData,
+    <term: ExprTerm> ":" <ty: Term> => TermData::Ann(Box::new(term), Box::new(ty)),
 };
 
-ExprTerm: Term<&'input str> = {
-    ArrowTerm,
-    <start: @L> "fun" <input_names: InputName+> "=>" <output_term: ExprTerm> => {
-        Term::FunctionTerm(start.., input_names, Box::new(output_term))
+ExprTermData: TermData<&'input str> = {
+    ArrowTermData,
+    "fun" <input_names: Ranged<Name>+> "=>" <output_term: ExprTerm> => {
+        TermData::FunctionTerm(input_names, Box::new(output_term))
     },
 };
 
-ArrowTerm: Term<&'input str> = {
-    AppTerm,
-    <start: @L> "Fun" <input_type_groups: ("(" <InputName+> ":" <ArrowTerm> ")")+>
+ArrowTermData: TermData<&'input str> = {
+    AppTermData,
+    "Fun" <input_type_groups: ("(" <Ranged<Name>+> ":" <ArrowTerm> ")")+>
         "->" <output_type: ArrowTerm> =>
     {
-        Term::FunctionType(start.., input_type_groups, Box::new(output_type))
+        TermData::FunctionType(input_type_groups, Box::new(output_type))
     },
     <input_type: AppTerm> "->" <output_type: ArrowTerm> => {
-        Term::FunctionArrowType(Box::new(input_type), Box::new(output_type))
+        TermData::FunctionArrowType(Box::new(input_type), Box::new(output_type))
     },
 };
 
-AppTerm: Term<&'input str> = {
-    AtomicTerm,
+AppTermData: TermData<&'input str> = {
+    AtomicTermData,
     <head_term: AtomicTerm> <input_terms: AtomicTerm+> => {
-        Term::FunctionElim(Box::new(head_term), input_terms)
+        TermData::FunctionElim(Box::new(head_term), input_terms)
     },
 };
 
-AtomicTerm: Term<&'input str> = {
-    "(" <term: Term> ")" => term,
-    <start: @L> <name: Name> <end: @R> => Term::Name(start..end, name),
-    <start: @L> <term: AtomicTerm> <shift: "shift"> <end: @R> => {
-        Term::Lift(start..end, Box::new(term), shift[1..].parse().unwrap()) // FIXME: Overflow!
+AtomicTermData: TermData<&'input str> = {
+    "(" <term: TermData> ")" => term,
+    <name: Name> => TermData::Name(name),
+    <term: AtomicTerm> <shift: "shift"> => {
+        TermData::Lift(Box::new(term), shift[1..].parse().unwrap()) // FIXME: Overflow!
     },
-    <start: @L> "Record" "{" <entries: List<TypeEntry>> "}" <end: @R> => Term::RecordType(start..end, entries),
-    <start: @L> "record" "{" <entries: List<TermEntry>> "}" <end: @R> => Term::RecordTerm(start..end, entries),
-    <head_term: AtomicTerm> "." <label_start: @L> <label: Name> <end: @R> => {
-        Term::RecordElim(Box::new(head_term), label_start..end, label)
-    },
-    <start: @L> "[" <entries: List<Term>> "]" <end: @R> => Term::Sequence(start..end, entries),
-    <start: @L> <literal: Literal> <end: @R> => Term::Literal(start..end, literal),
+    "Record" "{" <entries: List<TypeEntry>> "}" => TermData::RecordType(entries),
+    "record" "{" <entries: List<TermEntry>> "}" => TermData::RecordTerm(entries),
+    <head_term: AtomicTerm> "." <label: Ranged<Name>> => TermData::RecordElim(Box::new(head_term), label),
+    "[" <entries: List<Term>> "]" => TermData::Sequence(entries),
+    <literal: Literal> => TermData::Literal(literal),
 };
 
 List<Entry>: Vec<Entry> = {
@@ -93,21 +96,14 @@ List<Entry>: Vec<Entry> = {
 }
 
 TypeEntry: TypeEntry<&'input str> = {
-    <_docs: "doc comment"*> <start: @L> <label: Name> <name: ("as" <Name>)?> <end: @R> ":" <term: Term> => {
-        // TODO: Use doc comments
-        (start..end, label, name, term)
-    },
+    // TODO: Use doc comments
+    <_docs: "doc comment"*>
+    <label: Ranged<Name>> <name: ("as" <Ranged<Name>>)?> ":" <term: Term> => (label, name, term),
 };
 
 TermEntry: TermEntry<&'input str> = {
-    <_docs: "doc comment"*> <start: @L> <label: Name> <end: @R> "=" <term: Term> => {
-        // TODO: Use doc comments
-        (start..end, label, term)
-    },
-};
-
-InputName: (Range<usize>,&'input str) = {
-    <start: @L> <name: Name> <end: @R> => (start..end, name),
+    // TODO: Use doc comments
+    <_docs: "doc comment"*> <label: Ranged<Name>> "=" <term: Term> => (label, term),
 };
 
 Name: &'input str = {
@@ -118,4 +114,8 @@ Literal: Literal<&'input str> = {
     "character literal" => Literal::Char(<>),
     "string literal" => Literal::String(<>),
     "numeric literal" => Literal::Number(<>),
+};
+
+Ranged<T>: Ranged<T> = {
+    <start: @L> <data: T> <end: @R> => Ranged::new(start..end, data),
 };
