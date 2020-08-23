@@ -1,5 +1,5 @@
 use crate::lang::Ranged;
-use crate::lang::surface::{Term, TermData, Literal, TypeEntry, TermEntry};
+use crate::lang::surface::{Literal, Pattern, PatternData, Term, TermData, TypeEntry, TermEntry};
 use crate::lang::surface::lexer::{LexerError, Token};
 
 grammar<'input>;
@@ -51,16 +51,14 @@ TermData: TermData<&'input str> = {
 
 ExprTermData: TermData<&'input str> = {
     ArrowTermData,
-    "fun" <input_names: Ranged<Name>+> "=>" <output_term: ExprTerm> => {
-        TermData::FunctionTerm(input_names, Box::new(output_term))
+    "fun" <input_patterns: AtomicPattern+> "=>" <output_term: ExprTerm> => {
+        TermData::FunctionTerm(input_patterns, Box::new(output_term))
     },
 };
 
 ArrowTermData: TermData<&'input str> = {
     AppTermData,
-    "Fun" <input_type_groups: ("(" <Ranged<Name>+> ":" <ArrowTerm> ")")+>
-        "->" <output_type: ArrowTerm> =>
-    {
+    "Fun" <input_patterns: AtomicPattern+> "->" <output_type: ArrowTerm> => {
         TermData::FunctionType(input_type_groups, Box::new(output_type))
     },
     <input_type: AppTerm> "->" <output_type: ArrowTerm> => {
@@ -86,6 +84,19 @@ AtomicTermData: TermData<&'input str> = {
     <head_term: AtomicTerm> "." <label: Ranged<Name>> => TermData::RecordElim(Box::new(head_term), label),
     "[" <entries: List<Term>> "]" => TermData::Sequence(entries),
     <literal: Literal> => TermData::Literal(literal),
+};
+
+Pattern: Pattern<&'input str> = Ranged<PatternData>;
+AtomicPattern: Pattern<&'input str> = Ranged<AtomicPatternData>;
+
+PatternData: PatternData<&'input str> = {
+    AtomicPatternData,
+    <pattern: AtomicPattern> ":" <ty: Term> => PatternData::Ann(Box::new(term), Box::new(ty)),
+};
+
+AtomicPatternData: PatternData<&'input str> = {
+    "(" <pattern: AtomicPatternData> ")" => pattern,
+    <name: Name> => PatternData::Name(name),
 };
 
 List<Entry>: Vec<Entry> = {

@@ -2,7 +2,7 @@
 
 use pretty::{DocAllocator, DocBuilder};
 
-use crate::lang::surface::{Literal, Term, TermData};
+use crate::lang::surface::{Literal, Pattern, PatternData, Term, TermData};
 
 /// The precedence of a term.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -52,32 +52,20 @@ where
             .append("^")
             .append(shift.to_string()),
 
-        TermData::FunctionType(input_type_groups, output_type) => paren(
+        TermData::FunctionType(input_patterns, output_type) => paren(
             alloc,
             prec > Prec::Arrow,
             (alloc.nil())
                 .append("Fun")
                 .append(alloc.space())
-                .append(alloc.intersperse(
-                    input_type_groups.iter().map(|(input_names, input_type)| {
-                        (alloc.nil())
-                            .append("(")
-                            .append(
-                                alloc.intersperse(
-                                    input_names
-                                        .iter()
-                                        .map(|input_name| input_name.data.as_ref()),
-                                    alloc.space(),
-                                ),
-                            )
-                            .append(alloc.space())
-                            .append(":")
-                            .append(alloc.space())
-                            .append(from_term_prec(alloc, input_type, Prec::Term))
-                            .append(")")
-                    }),
-                    alloc.space(),
-                ))
+                .append(
+                    alloc.intersperse(
+                        input_patterns
+                            .iter()
+                            .map(|pattern| from_pattern_prec(alloc, pattern, Prec::Atomic)),
+                        alloc.space(),
+                    ),
+                )
                 .append(alloc.space())
                 .append("->")
                 .group()
@@ -109,7 +97,7 @@ where
                     alloc.intersperse(
                         input_names
                             .iter()
-                            .map(|input_name| input_name.data.as_ref()),
+                            .map(|pattern| from_pattern_prec(alloc, pattern, Prec::Atomic)),
                         alloc.space(),
                     ),
                 )
@@ -216,6 +204,35 @@ where
         TermData::Literal(literal) => from_literal(alloc, literal),
 
         TermData::Error => alloc.text("!"),
+    }
+}
+
+pub fn from_pattern_prec<'a, D, S>(
+    alloc: &'a D,
+    pattern: &'a Pattern<S>,
+    prec: Prec,
+) -> DocBuilder<'a, D>
+where
+    S: 'a + AsRef<str>,
+    D: DocAllocator<'a>,
+    D::Doc: Clone,
+{
+    match &pattern.data {
+        PatternData::Name(name) => alloc.text(name.as_ref()),
+        PatternData::Ann(pattern, r#type) => paren(
+            alloc,
+            prec > Prec::Term,
+            (alloc.nil())
+                .append(from_pattern_prec(alloc, pattern, Prec::Atomic))
+                .append(alloc.space())
+                .append(":")
+                .append(
+                    (alloc.space())
+                        .append(from_term_prec(alloc, r#type, Prec::Term))
+                        .group()
+                        .nest(4),
+                ),
+        ),
     }
 }
 

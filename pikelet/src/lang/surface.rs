@@ -26,12 +26,11 @@ pub enum Literal<S> {
 pub type TypeEntry<S> = (Ranged<S>, Option<Ranged<S>>, Term<S>);
 /// Entry in a [record term](Term::RecordTerm).
 pub type TermEntry<S> = (Ranged<S>, Term<S>);
-/// A group of function inputs that are elements of the same type.
-pub type InputGroup<S> = (Vec<Ranged<S>>, Term<S>);
 
+/// Terms.
 pub type Term<S> = Ranged<TermData<S>>;
 
-/// Terms in the surface language.
+/// Term data.
 #[derive(Debug, Clone)]
 pub enum TermData<S> {
     /// Names.
@@ -46,7 +45,7 @@ pub enum TermData<S> {
     /// Function types.
     ///
     /// Also known as: pi type, dependent product type.
-    FunctionType(Vec<InputGroup<S>>, Box<Term<S>>),
+    FunctionType(Vec<Pattern<S>>, Box<Term<S>>),
     /// Arrow function types.
     ///
     /// Also known as: non-dependent function type.
@@ -54,7 +53,7 @@ pub enum TermData<S> {
     /// Function terms.
     ///
     /// Also known as: lambda abstraction, anonymous function.
-    FunctionTerm(Vec<Ranged<S>>, Box<Term<S>>),
+    FunctionTerm(Vec<Pattern<S>>, Box<Term<S>>),
     /// Function eliminations.
     ///
     /// Also known as: function application.
@@ -88,4 +87,16 @@ impl<'input> Term<&'input str> {
         let tokens = lexer::tokens(input);
         grammar::TermParser::new().parse(tokens)
     }
+}
+
+/// Patterns.
+pub type Pattern<S> = Ranged<PatternData<S>>;
+
+/// Pattern data.
+#[derive(Debug, Clone)]
+pub enum PatternData<S> {
+    /// Names.
+    Name(S),
+    /// Annotated patterns.
+    Ann(Box<Pattern<S>>, Box<Term<S>>),
 }

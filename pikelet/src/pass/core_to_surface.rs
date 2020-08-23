@@ -139,31 +139,37 @@ pub fn from_term(state: &mut State<'_>, term: &Term) -> surface::Term<String> {
             // FIXME: properly group inputs!
             let input_type = from_term(state, input_type);
             let fresh_input_name = state.push_name(input_name_hint.as_ref().map(String::as_ref));
-            let input_type_groups = vec![(vec![Ranged::from(fresh_input_name)], input_type)];
+            let input_patterns = vec![surface::Pattern::from(surface::PatternData::Ann(
+                Box::new(surface::Pattern::from(surface::PatternData::Name(
+                    fresh_input_name,
+                ))),
+                Box::new(input_type),
+            ))];
 
-            surface::TermData::FunctionType(
-                input_type_groups,
-                Box::new(from_term(state, output_type)),
-            )
+            surface::TermData::FunctionType(input_patterns, Box::new(from_term(state, output_type)))
         }
         Term::FunctionTerm(input_name_hint, output_term) => {
             let mut current_output_term = output_term;
 
             let fresh_input_name = state.push_name(Some(input_name_hint));
-            let mut input_names = vec![Ranged::from(fresh_input_name)];
+            let mut input_patterns = vec![surface::Pattern::from(surface::PatternData::Name(
+                fresh_input_name,
+            ))];
 
             while let Term::FunctionTerm(input_name_hint, output_term) =
                 current_output_term.as_ref()
             {
                 let fresh_input_name = state.push_name(Some(input_name_hint));
-                input_names.push(Ranged::from(fresh_input_name));
+                input_patterns.push(surface::Pattern::from(surface::PatternData::Name(
+                    fresh_input_name,
+                )));
                 current_output_term = output_term;
             }
 
             let output_term = from_term(state, current_output_term);
-            state.pop_many_names(input_names.len());
+            state.pop_many_names(input_patterns.len());
 
-            surface::TermData::FunctionTerm(input_names, Box::new(output_term))
+            surface::TermData::FunctionTerm(input_patterns, Box::new(output_term))
         }
         Term::FunctionElim(head_term, input_term) => {
             let mut current_head_term = head_term;

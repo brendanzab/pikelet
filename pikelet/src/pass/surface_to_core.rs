@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::lang::core;
 use crate::lang::core::semantics::{self, Elim, Head, RecordTypeClosure, Unfold, Value};
-use crate::lang::surface::{Literal, Term, TermData};
+use crate::lang::surface::{Literal, PatternData, Term, TermData};
 use crate::pass::core_to_surface;
 
 pub mod reporting;
@@ -181,12 +181,12 @@ pub fn check_type<S: AsRef<str>>(
     match (&term.data, expected_type.force(state.globals)) {
         (_, Value::Error) => core::Term::Error,
 
-        (TermData::FunctionTerm(input_names, output_term), _) => {
+        (TermData::FunctionTerm(input_patterns, output_term), _) => {
             let mut seen_input_count = 0;
             let mut expected_type = expected_type.clone();
-            let mut pending_input_names = input_names.iter();
+            let mut pending_input_patterns = input_patterns.iter();
 
-            while let Some(input_name) = pending_input_names.next() {
+            while let Some(input_pattern) = pending_input_patterns.next() {
                 match expected_type.force(state.globals) {
                     Value::FunctionType(_, input_type, output_closure) => {
                         let input_value = state
@@ -200,8 +200,8 @@ pub fn check_type<S: AsRef<str>>(
                     }
                     _ => {
                         state.report(Message::TooManyInputsInFunctionTerm {
-                            unexpected_inputs: std::iter::once(input_name.range())
-                                .chain(pending_input_names.map(|input_name| input_name.range()))
+                            unexpected_inputs: std::iter::once(input_pattern.range())
+                                .chain(pending_input_patterns.map(|input_name| input_name.range()))
                                 .collect(),
                         });
                         check_type(state, output_term, &expected_type);
@@ -213,12 +213,15 @@ pub fn check_type<S: AsRef<str>>(
 
             let core_output_term = check_type(state, output_term, &expected_type);
             state.pop_many_locals(seen_input_count);
-            (input_names.iter().rev()).fold(core_output_term, |core_output_term, input_name| {
-                core::Term::FunctionTerm(
-                    input_name.data.as_ref().to_owned(),
-                    Arc::new(core_output_term),
-                )
-            })
+            (input_patterns.iter().rev()).fold(
+                core_output_term,
+                |core_output_term, input_pattern| {
+                    core::Term::FunctionTerm(
+                        input_name.data.as_ref().to_owned(),
+                        Arc::new(core_output_term),
+                    )
+                },
+            )
         }
 
         (TermData::RecordTerm(term_entries), Value::RecordType(closure)) => {
@@ -451,7 +454,7 @@ pub fn synth_type<S: AsRef<str>>(
             }
         }
 
-        TermData::FunctionType(input_type_groups, output_type) => {
+        TermData::FunctionType(input_patterns, output_type) => {
             let mut max_level = Some(core::UniverseLevel(0));
             let update_level = |max_level, next_level| match (max_level, next_level) {
                 (Some(max_level), Some(pl)) => Some(std::cmp::max(max_level, pl)),
@@ -459,15 +462,24 @@ pub fn synth_type<S: AsRef<str>>(
             };
             let mut core_inputs = Vec::new();
 
-            for (input_names, input_type) in input_type_groups {
-                for input_name in input_names {
-                    let (core_input_type, input_level) = is_type(state, input_type);
-                    max_level = update_level(max_level, input_level);
+            for input_pattern in input_patterns {
+                match &input_pattern.data {
+                    PatternData::Name(input_name) => todo!(),
+                    PatternData::Ann(pattern, input_type) => {
+                        let (core_input_type, input_level) = is_type(state, input_type);
+                        max_level = update_level(max_level, input_level);
 
-                    let core_input_type_value = state.eval_term(&core_input_type);
-                    state.push_local_param(Some(input_name.data.as_ref()), core_input_type_value);
-                    core_inputs.push((Some(input_name.data.as_ref().to_owned()), core_input_type));
+                        todo!()
+                    }
                 }
+                // for input_name in input_names {
+                //     let (core_input_type, input_level) = is_type(state, input_type);
+                //     max_level = update_level(max_level, input_level);
+
+                //     let core_input_type_value = state.eval_term(&core_input_type);
+                //     state.push_local_param(Some(input_name.data.as_ref()), core_input_type_value);
+                //     core_inputs.push((Some(input_name.data.as_ref().to_owned()), core_input_type));
+                // }
             }
 
             let (core_output_type, output_level) = is_type(state, output_type);
