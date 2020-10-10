@@ -453,7 +453,7 @@ fn apply_function_elim(
 /// Describes how definitions should be unfolded to when reading back values.
 #[derive(Copy, Clone, Debug)]
 pub enum Unfold {
-    /// Never unfold definitions.
+    /// Unfold the least possible amount.
     ///
     /// This avoids generating bloated terms, which can be detrimental for
     /// performance and difficult for humans to read. Examples of where this
@@ -462,11 +462,32 @@ pub enum Unfold {
     /// - elaborating partially annotated surface terms into core terms that
     ///   require explicit type annotations
     /// - displaying terms in diagnostic messages to the user
-    Never,
+    Minimal,
     /// Always unfold global and local definitions.
     ///
     /// This is useful for fully normalizing terms.
     Always,
+}
+
+/// Attempt to read-back the head of an elimination into the term syntax.
+///
+/// Returns `None` if the head was not valid for the current size of the local
+/// environment. This could occur at the head of a [`Value::Unstuck`] value that
+/// has escaped from its original scope.
+fn read_back_head(local_size: LocalSize, head: &Head) -> Option<Term> {
+    match head {
+        Head::Global(name, shift) => {
+            let global = Term::from(TermData::Global(name.clone()));
+            match shift {
+                UniverseOffset(0) => Some(global),
+                shift => Some(Term::from(TermData::Lift(Arc::new(global), *shift))),
+            }
+        }
+        Head::Local(level) => {
+            let index = level.to_index(local_size)?;
+            Some(Term::from(TermData::Local(index)))
+        }
+    }
 }
 
 /// Read-back a spine of eliminators into the term syntax.
@@ -474,23 +495,9 @@ fn read_back_stuck_value(
     globals: &Globals,
     local_size: LocalSize,
     unfold: Unfold,
-    head: &Head,
+    head: Term,
     spine: &[Elim],
 ) -> Term {
-    let head = match head {
-        Head::Global(name, shift) => {
-            let global = Term::from(TermData::Global(name.clone()));
-            match shift {
-                UniverseOffset(0) => global,
-                shift => Term::from(TermData::Lift(Arc::new(global), *shift)),
-            }
-        }
-        Head::Local(level) => {
-            let index = level.to_index(local_size).unwrap();
-            Term::from(TermData::Local(index)) // TODO: Handle overflow
-        }
-    };
-
     spine.iter().fold(head, |head, elim| match elim {
         Elim::Function(input) => {
             let input = read_back_value(globals, local_size, unfold, input.force(globals));
@@ -509,10 +516,19 @@ pub fn read_back_value(
 ) -> Term {
     match value {
         Value::Stuck(head, spine) => {
+            let head = read_back_head(local_size, head).unwrap();
             read_back_stuck_value(globals, local_size, unfold, head, spine)
         }
         Value::Unstuck(head, spine, value) => match unfold {
-            Unfold::Never => read_back_stuck_value(globals, local_size, unfold, head, spine),
+            // NOTE: Not sure if this is actually valid when using levels with
+            // unstuck values! We might need to use fresh variables for local
+            // variables in values instead, in order to be sure that we don't
+            // accidentally compare levels that originate from different scopes.
+            Unfold::Minimal => match read_back_head(local_size, head) {
+                Some(head) => read_back_stuck_value(globals, local_size, unfold, head, spine),
+                // The level is not valid at the current scope, so unfold the value!
+                None => read_back_value(globals, local_size, unfold, value.force(globals)),
+            },
             Unfold::Always => read_back_value(globals, local_size, unfold, value.force(globals)),
         },
 
@@ -593,6 +609,22 @@ pub fn read_back_value(
     }
 }
 
+/// Check that one elimination head is equal to another elimination head.
+fn is_equal_head(local_size: LocalSize, head0: &Head, head1: &Head) -> bool {
+    match (head0, head1) {
+        (Head::Global(name0, _), Head::Global(name1, _)) => name0 == name1,
+        (Head::Local(level0), Head::Local(level1)) => {
+            match (level0.to_index(local_size), level1.to_index(local_size)) {
+                (Some(index0), Some(index1)) => index0 == index1,
+                // One or both of levels were invalid for the current local
+                // environment, and so they must not be equal.
+                (_, _) => false,
+            }
+        }
+        (_, _) => false,
+    }
+}
+
 /// Check that one stuck value is equal to another stuck value.
 fn is_equal_stuck_value(
     globals: &Globals,
@@ -600,7 +632,7 @@ fn is_equal_stuck_value(
     (head0, spine0): (&Head, &[Elim]),
     (head1, spine1): (&Head, &[Elim]),
 ) -> bool {
-    if head0 != head1 || spine0.len() != spine1.len() {
+    if !is_equal_head(local_size, head0, head1) || spine0.len() != spine1.len() {
         return false;
     }
 

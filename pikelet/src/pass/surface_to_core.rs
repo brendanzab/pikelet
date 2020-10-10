@@ -139,7 +139,7 @@ impl<'me> State<'me> {
     /// [`Value`]: crate::lang::core::semantics::Value
     /// [`core::Term`]: crate::lang::core::Term
     pub fn read_back_value(&self, value: &Value) -> core::Term {
-        semantics::read_back_value(self.globals, self.values.size(), Unfold::Never, value)
+        semantics::read_back_value(self.globals, self.values.size(), Unfold::Minimal, value)
     }
 
     /// Check that one [`Value`] is a subtype of another [`Value`].
