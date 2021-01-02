@@ -141,6 +141,27 @@ where
             .append(".")
             .append(alloc.text(label)),
 
+        TermData::EnumType(labels) => (alloc.nil())
+            .append("Enum")
+            .append(alloc.space())
+            .append("{")
+            .group()
+            .append(alloc.concat(labels.iter().map(|label| {
+                (alloc.nil())
+                    .append(alloc.hardline())
+                    .append(alloc.text(label))
+                    .append(",")
+                    .group()
+                    .nest(4)
+                    .group()
+            })))
+            .append("}"),
+        TermData::EnumTerm(label) => (alloc.nil())
+            .append("enum")
+            .append(alloc.space())
+            .append(alloc.text(label)),
+        TermData::EnumElim(clauses) => todo!(),
+
         TermData::ArrayTerm(term_entries) | TermData::ListTerm(term_entries) => (alloc.nil())
             .append("[")
             .group()

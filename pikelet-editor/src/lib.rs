@@ -111,6 +111,10 @@ fn view_term<M: 'static>(term: &pikelet::lang::core::Term) -> Element<M> {
         TermData::RecordType(_) => Text::new("todo").into(),
         TermData::RecordElim(_, _) => Text::new("todo").into(),
 
+        TermData::EnumType(_) => Text::new("todo").into(),
+        TermData::EnumTerm(_) => Text::new("todo").into(),
+        TermData::EnumElim(_) => Text::new("todo").into(),
+
         TermData::ArrayTerm(_) => Text::new("todo").into(),
         TermData::ListTerm(_) => Text::new("todo").into(),
 

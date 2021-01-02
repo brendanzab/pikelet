@@ -58,6 +58,13 @@ pub enum TermData {
     /// Also known as: record projections, field lookup.
     RecordElim(Box<Term>, Located<String>),
 
+    /// Enumeration types.
+    ///
+    /// Also known as: finite sets, enumeration set.
+    EnumType(Vec<String>),
+    /// Enumeration terms.
+    EnumTerm(String),
+
     /// Ordered sequences.
     SequenceTerm(Vec<Term>),
     /// Character literals.

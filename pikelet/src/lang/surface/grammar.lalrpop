@@ -21,6 +21,8 @@ extern {
         "Fun" => Token::FunType,
         "record" => Token::RecordTerm,
         "Record" => Token::RecordType,
+        "enum" => Token::EnumTerm,
+        "Enum" => Token::EnumType,
 
         "->"  => Token::Arrow,
         "=>"  => Token::DArrow,
@@ -80,6 +82,8 @@ AtomicTermData: TermData = {
     <name: Name> => TermData::Name(name),
     "Record" "{" <entries: List<TypeEntry>> "}" => TermData::RecordType(entries),
     "record" "{" <entries: List<TermEntry>> "}" => TermData::RecordTerm(entries),
+    "Enum" "{" <names: List<Name>> "}" => TermData::EnumType(names),
+    "enum" <name: Name> => TermData::EnumTerm(name),
     <head_term: AtomicTerm> "." <label: Located<Name>> => TermData::RecordElim(Box::new(head_term), label),
     "[" <entries: List<Term>> "]" => TermData::SequenceTerm(entries),
     "character literal" => TermData::CharTerm(<>.to_owned()),

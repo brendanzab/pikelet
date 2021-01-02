@@ -225,6 +225,10 @@ impl<'me> State<'me> {
                 Located::generated(label.clone()),
             ),
 
+            TermData::EnumType(labels) => todo!(),
+            TermData::EnumTerm(label) => todo!(),
+            TermData::EnumElim(clauses) => todo!(),
+
             TermData::ArrayTerm(entry_terms) | TermData::ListTerm(entry_terms) => {
                 let core_entry_terms = entry_terms
                     .iter()

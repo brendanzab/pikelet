@@ -95,6 +95,17 @@ pub enum TermData {
     /// Also known as: record projection, field lookup.
     RecordElim(Arc<Term>, String),
 
+    /// Enumeration types.
+    ///
+    /// Also known as: finite sets, enumeration set.
+    EnumType(Arc<[String]>),
+    /// Enumeration terms.
+    EnumTerm(String),
+    /// Enumeration eliminations.
+    ///
+    /// Also known as: case split.
+    EnumElim(Arc<[(String, Arc<Term>)]>),
+
     /// Array terms.
     ArrayTerm(Vec<Arc<Term>>),
     /// List terms.
@@ -147,7 +158,6 @@ impl Default for Globals {
         };
 
         entries.insert("Type".to_owned(), (type_type(), Some(type_type())));
-        entries.insert("Bool".to_owned(), (global("Type"), None));
         entries.insert("U8".to_owned(), (global("Type"), None));
         entries.insert("U16".to_owned(), (global("Type"), None));
         entries.insert("U32".to_owned(), (global("Type"), None));
@@ -160,8 +170,33 @@ impl Default for Globals {
         entries.insert("F64".to_owned(), (global("Type"), None));
         entries.insert("Char".to_owned(), (global("Type"), None));
         entries.insert("String".to_owned(), (global("Type"), None));
-        entries.insert("true".to_owned(), (global("Bool"), None));
-        entries.insert("false".to_owned(), (global("Bool"), None));
+        entries.insert(
+            "Bool".to_owned(),
+            (
+                global("Type"),
+                Some(Arc::new(Term::generated(TermData::EnumType(
+                    vec!["false".to_owned(), "true".to_owned()].into(),
+                )))),
+            ),
+        );
+        entries.insert(
+            "true".to_owned(),
+            (
+                global("Bool"),
+                Some(Arc::new(Term::generated(TermData::EnumTerm(
+                    "true".to_owned(),
+                )))),
+            ),
+        );
+        entries.insert(
+            "false".to_owned(),
+            (
+                global("Bool"),
+                Some(Arc::new(Term::generated(TermData::EnumTerm(
+                    "false".to_owned(),
+                )))),
+            ),
+        );
         entries.insert(
             "Array".to_owned(),
             (

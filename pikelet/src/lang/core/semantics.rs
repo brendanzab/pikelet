@@ -57,6 +57,13 @@ pub enum Value {
     /// Record terms.
     RecordTerm(RecordClosure),
 
+    /// Enumeration types.
+    ///
+    /// Also known as: finite sets, enumeration set.
+    EnumType(Arc<[String]>),
+    /// Enumeration terms.
+    EnumTerm(String),
+
     /// Array terms.
     ArrayTerm(Vec<Arc<Value>>),
     /// List terms.
@@ -343,6 +350,10 @@ pub fn eval(globals: &Globals, locals: &mut Locals<Arc<Value>>, term: &Term) -> 
             apply_function_elim(globals, head, Arc::new(input))
         }
 
+        TermData::EnumType(labels) => Arc::new(Value::EnumType(labels.clone())),
+        TermData::EnumTerm(label) => Arc::new(Value::EnumTerm(label.clone())),
+        TermData::EnumElim(clauses) => todo!(),
+
         TermData::ArrayTerm(term_entries) => {
             let value_entries = term_entries
                 .iter()
@@ -548,6 +559,9 @@ pub fn read_back(globals: &Globals, local_size: LocalSize, unfold: Unfold, value
             Term::generated(TermData::RecordTerm(term_entries.into()))
         }
 
+        Value::EnumType(labels) => Term::generated(TermData::EnumType(labels.clone())),
+        Value::EnumTerm(label) => Term::generated(TermData::EnumTerm(label.clone())),
+
         Value::ArrayTerm(value_entries) => {
             let term_entries = value_entries
                 .iter()
@@ -715,6 +729,9 @@ pub fn is_equal(globals: &Globals, local_size: LocalSize, value0: &Value, value1
 
             true
         }
+
+        (Value::EnumType(labels0), Value::EnumType(labels1)) => labels0 == labels1,
+        (Value::EnumTerm(label0), Value::EnumTerm(label1)) => label0 == label1,
 
         (Value::ArrayTerm(value_entries0), Value::ArrayTerm(value_entries1))
         | (Value::ListTerm(value_entries0), Value::ListTerm(value_entries1)) => {

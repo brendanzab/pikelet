@@ -186,6 +186,14 @@ impl<'me> State<'me> {
                 }
             }
 
+            (TermData::EnumTerm(label), Value::EnumType(labels)) => {
+                match labels.binary_search(label) {
+                    Ok(_) => todo!(),
+                    Err(_) => todo!(),
+                }
+            }
+            (TermData::EnumElim(clauses), expected_type) => todo!(),
+
             (TermData::ArrayTerm(entry_terms), forced_type) => match forced_type.try_global() {
                 Some(("Array", [Elim::Function(len), Elim::Function(entry_type)])) => {
                     let forced_entry_type = entry_type.force(self.globals);
@@ -383,6 +391,10 @@ impl<'me> State<'me> {
                 });
                 Arc::new(Value::Error)
             }
+
+            TermData::EnumType(labels) => todo!(),
+            TermData::EnumTerm(label) => todo!(),
+            TermData::EnumElim(clauses) => todo!(),
 
             TermData::Constant(constant) => Arc::new(match constant {
                 Constant::U8(_) => Value::global("U8", []),
